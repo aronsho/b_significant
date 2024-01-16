@@ -7,6 +7,7 @@ from seismostats import estimate_b_elst
 # local imports
 from functions.b_value_functions import transform_n
 
+
 def acf_lag_n(b_series: np.ndarray, lag: int = 1):
     """calculates the autocorrelation function for a given lag
     Args:
@@ -52,8 +53,8 @@ def random_samples_pos(
     times_chunks = np.array_split(times, idx)
 
     for ii in range(len(idx) - 1):
-        mags_loop = magnitudes[idx[ii] : idx[ii + 1]]
-        times_loop = times[idx[ii] : idx[ii + 1]]
+        mags_loop = mags_chunks[ii]
+        times_loop = times_chunks[ii]
 
         # sort the magnitudes by their time
         idx_sorted = np.argsort(times_loop)
@@ -99,8 +100,8 @@ def get_acf_random_pos(
                                     crosscorrelation
     """
 
-    # estimate b-value for all data (note: magnitudes might be ordered by space,
-    # therefore sort by time is necessary)
+    # estimate b-value for all data (note: magnitudes might be ordered by
+    # space, therefore sort by time is necessary)
     idx = np.argsort(times)
     mags_sorted = magnitudes[idx]
     b_all = estimate_b_elst(mags_sorted, delta_m=delta_m)
