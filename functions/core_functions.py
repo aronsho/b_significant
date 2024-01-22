@@ -12,43 +12,93 @@ from seismostats.analysis.estimate_beta import (
 from functions.general_functions import transform_n, acf_lag_n
 
 
-def cut_random(series: np.ndarray, n_sample: int) -> (np.ndarray, list[int]):
-    """cut a series of vaqlues at random points
+def cut_constant(
+    series: np.ndarray,
+    n_sample: np.ndarray,
+    times: None | np.ndarray = None,
+    offset: int = 0,
+) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
+    """cut a series at constant intervals
 
     Args:
         series:     array of values
-        times:      array of times corresponding to the values of the series
         n_sample:   number of subsamples to cut the series into
+        times:      array of times corresponding to the values of the series,
+                optional
+        offset:     offset where to start cutting the series
 
     Returns:
-        chunks:     list of arrays of the subsamples
-        idx:        indices of the subsamples
+        idx:            indices of the subsamples
+        subsamples:     list of subsamples
+        subsample_times:list times corresponding to the subsamples
+
+    """
+    n_b = np.round(len(series) / n_sample).astype(int)
+    idx = np.arange(offset, len(series), n_b)
+    idx = idx[1:]
+
+    subsamples = np.array_split(series[offset:], idx - offset)
+    if times is not None:
+        subsamples_times = np.array_split(times[offset:], idx - offset)
+        return idx, subsamples, subsamples_times
+
+    return idx, subsamples
+
+
+def cut_random(
+    series: np.ndarray, n_sample: int, times: None | np.ndarray = None
+) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
+    """cut a series at random points
+
+    Args:
+        series:     array of values
+        n_sample:   number of subsamples to cut the series into
+        times:      array of times corresponding to the values of the series
+
+    Returns:
+        idx:            indices of the subsamples
+        subsamples:     list of subsamples
+        subsample_times:list of times corresponding to the subsamples
 
     """
     # generate random index
     idx = random.sample(np.arange(1, len(series)), n_sample - 1)
-    print(n_sample)
-    print(idx)
+
     idx = np.sort(idx)
-    chunks = np.array_split(series, idx)
-    return chunks, idx
+    subsamples = np.array_split(series, idx)
+
+    if times is not None:
+        subsamples_times = np.array_split(times, idx)
+        return idx, subsamples, subsamples_times
+
+    return idx, subsamples
 
 
 def random_samples_pos(
     magnitudes: np.ndarray,
     times: np.ndarray[dt.datetime],
-    n_series: int,
+    n_sample: int,
     delta_m: float = 0.1,
     return_idx: bool = False,
 ):
     """cut the magnitudes randomly into n_series subsamples and estimate
-    b-values"""
-    # cut randomly
-    mags_chunks, idx = cut_random(magnitudes, n_series)
-    times_chunks = np.array_split(times, idx)
+    b-values
+
+    Args:
+        magnitudes:     array of magnitudes
+        times:          array of times that correspond to magnitudes
+        n_sample:       number of subsamples to cut the data into
+        delta_m:        magnitude bin width
+        return_idx:     if True, return the indices of the subsamples
+        cutting:        method of cutting the data into subsamples. either
+                    'random' or 'constant'
+
+    """
+    # cut
+    idx, mags_chunks, times_chunks = cut_random(magnitudes, n_sample, times)
 
     # estimate b-values
-    b_series = np.zeros(n_series)
+    b_series = np.zeros(n_sample)
     n_bs = np.zeros(len(idx) - 1)
 
     for ii in range(len(idx) - 1):
@@ -81,19 +131,19 @@ def get_acf_random_pos(
     """estimates the autocorrelation from randomly sampling the magnitudes
 
     Args:
-        magnitudes (np.array): array of magnitudes (not the differences!)
-        times (np.array): array of times that correspond to magnitudes
-        n_series (int): number of series to cut the data into
-        delta_m (float): magnitude bin width
-        nb_min (int): minimum number of events in a series
-        n (int): number of random samples
-        transform (bool): if True, transform b-values such that they are all
-            comparable regardless of the number of events used
+        magnitudes:     array of magnitudes (not the differences!)
+        times:          array of times that correspond to magnitudes
+        n_series:       number of series to cut the data into
+        delta_m:        magnitude bin width
+        nb_min:         minimum number of events in a series
+        n:              number of random samples
+        transform:      if True, transform b-values such that they are all
+                    comparable regardless of the number of events used
 
     Returns:
-        acfs (np.array):            array of acfs (for each random sample)
-        n_series_used (np.array):   array of number of b-values used for the
-                                    crosscorrelation
+        acfs:           array of acfs (for each random sample)
+        n_series_used:  array of number of b-values used for the
+                    crosscorrelation
     """
 
     # estimate b-value for all data (note: magnitudes might be ordered by
@@ -141,19 +191,18 @@ def get_acf_random_pos(
 
 def random_samples(
     magnitudes: np.ndarray,
-    n_series: int,
+    n_sample: int,
     mc: float = 0,
     delta_m: float = 0.1,
     return_idx: bool = False,
 ):
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values"""
-    # generate random index
-    # cut randomly
-    mags_chunks, idx = cut_random(magnitudes, n_series)
+    # cut
+    idx, mags_chunks = cut_random(magnitudes, n_sample)
 
     # estimate b-values
-    b_series = np.zeros(n_series)
+    b_series = np.zeros(n_sample)
     n_bs = np.zeros(len(idx) - 1)
 
     for ii in range(len(idx) - 1):
@@ -188,12 +237,12 @@ def get_acf_random(
         nb_min:     minimum number of events in a series
         n:          number of random samples
         transform:  if True, transform b-values such that they are all
-                    comparable regardless of the number of events used
+                comparable regardless of the number of events used
 
     Returns:
         acfs (np.array):            array of acfs (for each random sample)
         n_series_used (np.array):   array of number of b-values used for the
-                                    crosscorrelation
+                                crosscorrelation
     """
 
     # estimate b-value for all data
