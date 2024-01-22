@@ -1,6 +1,11 @@
 # imports
 import numpy as np
 from seismostats import simulate_magnitudes, bin_to_precision
+from seismostats.analysis.estimate_beta import (
+    estimate_b_positive,
+    estimate_b_tinti,
+)
+import datetime as dt
 
 
 def transform_n(x: float, b: float, n1: int, n2: int):
@@ -108,7 +113,7 @@ def simulate_step(
     b_true = np.ones(n) * b
     b_true[n_loop1 : n_loop1 + n_deviation] = b + delta_b  # noqa
 
-    magnitudes = simulated_magnitudes_binned(n, b, mc, delta_m)
+    magnitudes = simulated_magnitudes_binned(n, b_true, mc, delta_m)
 
     return magnitudes, b_true
 
@@ -138,3 +143,104 @@ def utsu_test(b1: float, b2: float, n1: int, n2: int):
     )
     p = np.exp(-delta_AIC / 2 - 2)
     return p
+
+
+def b_any_series(
+    magnitudes: np.ndarray,
+    times: np.ndarray[dt.datetime],
+    n_b: int,
+    delta_m: float = 0,
+    mc: float = None,
+    return_std: bool = False,
+    overlap: float = 0,
+    offset: int = 0,
+    return_time_bar: bool = True,
+    method: str = "tinti",
+):
+    """estimates the b-value using a constant number of events (n_times).
+
+    Args:
+        magnitudes:         array of magnitudes. Magnitudes should be
+                            sorted in the way the series is wanted
+                            (time sorting is not assumed)
+        times:               array of dates
+        n_b:                number of events to use for the estimation
+        mc:                 completeness magnitude
+        delta_m:            magnitude bin width
+        return_std:         if True, return the standard deviation of the
+                        b-value
+        overlap:            fraction of overlap between the time windows
+        offset:             index of the first event to use, should be
+                            smaller than n_b
+        return_time_bar:    if True, return the time window lengths
+        method:             method to use for the b-value estimation.
+
+    Returns:
+        b_time:     array of b-values
+        time_max:   array of end times of the time windows
+        time_bar:   array of time window lengths
+    """
+    n_eval = len(magnitudes) - n_b
+    b_any = []
+    b_std = []
+    idx_max = []
+    idx_min = []
+
+    if method == "positive":
+        check_first = 0
+        check_last = 0
+        while check_last < len(magnitudes) - 1:
+            check_last += 1
+
+            loop_mags = magnitudes[check_first : check_last + 1]  # noqa
+            idx = np.argsort(times[check_first : check_last + 1])  # noqa
+            loop_mags = loop_mags[idx]
+            diffs = np.diff(loop_mags)
+
+            while sum(diffs > 0) > n_b:
+                loop_mags = magnitudes[check_first:check_last]
+                idx = np.argsort(times[check_first : check_last + 1])  # noqa
+                diffs = np.diff(loop_mags)
+                check_first += 1
+
+            if sum(diffs > 0) == n_b:
+                b_loop, std_loop = estimate_b_positive(
+                    loop_mags, delta_m=delta_m, return_std=True
+                )
+                b_any.append(b_loop)
+                b_std.append(std_loop)
+                idx_min.append(check_first)
+                idx_max.append(check_last)
+
+    elif method == "tinti":
+        for ii in np.arange(
+            offset,
+            n_eval,
+            n_b - max(0, round(n_b * overlap - 1, 1)),
+        ):
+            loop_mags = magnitudes[ii : ii + n_b + 1]  # noqa
+            idx = np.argsort(times[ii : ii + n_b + 1])  # noqa
+            loop_mags = loop_mags[idx]
+
+            if mc is None:
+                mc = loop_mags.min()
+                print("no mc given, chose minimum magnitude of the sample")
+
+            b_loop, std_loop = estimate_b_tinti(
+                loop_mags, mc=mc, delta_m=delta_m, return_std=True
+            )
+            b_any.append(b_loop)
+            b_std.append(std_loop)
+
+            idx_min.append(ii)
+            idx_max.append(ii + n_b)
+
+    b_any = np.array(b_any)
+    b_std = np.array(b_std)
+
+    if return_std is True:
+        return b_any, idx_max, b_std
+    elif return_time_bar is True:
+        return b_any, idx_max
+    else:
+        return b_any

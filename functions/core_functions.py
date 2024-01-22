@@ -12,6 +12,28 @@ from seismostats.analysis.estimate_beta import (
 from functions.general_functions import transform_n, acf_lag_n
 
 
+def cut_random(series: np.ndarray, n_sample: int) -> (np.ndarray, list[int]):
+    """cut a series of vaqlues at random points
+
+    Args:
+        series:     array of values
+        times:      array of times corresponding to the values of the series
+        n_sample:   number of subsamples to cut the series into
+
+    Returns:
+        chunks:     list of arrays of the subsamples
+        idx:        indices of the subsamples
+
+    """
+    # generate random index
+    idx = random.sample(np.arange(1, len(series)), n_sample - 1)
+    print(n_sample)
+    print(idx)
+    idx = np.sort(idx)
+    chunks = np.array_split(series, idx)
+    return chunks, idx
+
+
 def random_samples_pos(
     magnitudes: np.ndarray,
     times: np.ndarray[dt.datetime],
@@ -21,16 +43,13 @@ def random_samples_pos(
 ):
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values"""
-    # generate random index
-    idx = random.sample(np.arange(len(magnitudes)) + 1, n_series)
-    idx = np.sort(idx)
+    # cut randomly
+    mags_chunks, idx = cut_random(magnitudes, n_series)
+    times_chunks = np.array_split(times, idx)
 
     # estimate b-values
     b_series = np.zeros(n_series)
     n_bs = np.zeros(len(idx) - 1)
-
-    mags_chunks = np.array_split(magnitudes, idx)
-    times_chunks = np.array_split(times, idx)
 
     for ii in range(len(idx) - 1):
         mags_loop = mags_chunks[ii]
@@ -130,14 +149,12 @@ def random_samples(
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values"""
     # generate random index
-    idx = random.sample(np.arange(len(magnitudes)) + 1, n_series)
-    idx = np.sort(idx)
+    # cut randomly
+    mags_chunks, idx = cut_random(magnitudes, n_series)
 
     # estimate b-values
     b_series = np.zeros(n_series)
     n_bs = np.zeros(len(idx) - 1)
-
-    mags_chunks = np.array_split(magnitudes, idx)
 
     for ii in range(len(idx) - 1):
         mags_loop = mags_chunks[ii]
