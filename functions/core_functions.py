@@ -12,13 +12,13 @@ from seismostats.analysis.estimate_beta import (
 from functions.general_functions import transform_n, acf_lag_n
 
 
-def cut_constant(
+def cut_constant_idx(
     series: np.ndarray,
     n_sample: np.ndarray,
     times: None | np.ndarray = None,
     offset: int = 0,
 ) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
-    """cut a series at constant intervals
+    """cut a series such that the subsamples have a constant number of events
 
     Args:
         series:     array of values
@@ -45,10 +45,10 @@ def cut_constant(
     return idx, subsamples
 
 
-def cut_random(
+def cut_random_idx(
     series: np.ndarray, n_sample: int, times: None | np.ndarray = None
 ) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
-    """cut a series at random points
+    """cut a series at random idx points.
 
     Args:
         series:     array of values
@@ -62,7 +62,7 @@ def cut_random(
 
     """
     # generate random index
-    idx = random.sample(np.arange(1, len(series)), n_sample - 1)
+    idx = random.sample(list(np.arange(1, len(series))), n_sample - 1)
 
     idx = np.sort(idx)
     subsamples = np.array_split(series, idx)
@@ -72,6 +72,39 @@ def cut_random(
         return idx, subsamples, subsamples_times
 
     return idx, subsamples
+
+
+def cut_random_time(
+    series: np.ndarray,
+    n_sample: int,
+    times: np.ndarray[dt.datetime],
+) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
+    """cut a series at random times.
+
+    Args:
+        series:     array of values
+        n_sample:   number of subsamples to cut the series into
+        times:      array of times corresponding to the values of the series
+
+    Returns:
+        idx:            indices of the subsamples
+        subsamples:     list of subsamples
+        subsample_times:list of times corresponding to the subsamples
+
+    """
+    # generate random index
+    times = np.sort(times)
+    random_times = (
+        np.random.rand(n_sample - 1) * (times[-1] - times[0]) + times[0]
+    )
+
+    idx = np.searchsorted(times, random_times)
+    idx = np.sort(idx)
+
+    subsamples = np.array_split(series, idx)
+    subsamples_times = np.array_split(times, idx)
+
+    return idx, subsamples, subsamples_times
 
 
 def random_samples_pos(
@@ -95,7 +128,9 @@ def random_samples_pos(
 
     """
     # cut
-    idx, mags_chunks, times_chunks = cut_random(magnitudes, n_sample, times)
+    idx, mags_chunks, times_chunks = cut_random_idx(
+        magnitudes, n_sample, times
+    )
 
     # estimate b-values
     b_series = np.zeros(n_sample)
@@ -199,7 +234,7 @@ def random_samples(
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values"""
     # cut
-    idx, mags_chunks = cut_random(magnitudes, n_sample)
+    idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
 
     # estimate b-values
     b_series = np.zeros(n_sample)
