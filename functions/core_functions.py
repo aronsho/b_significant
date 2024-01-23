@@ -15,76 +15,65 @@ from functions.general_functions import transform_n, acf_lag_n
 def cut_constant_idx(
     series: np.ndarray,
     n_sample: np.ndarray,
-    times: None | np.ndarray = None,
     offset: int = 0,
-) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
-    """cut a series such that the subsamples have a constant number of events
+) -> tuple[list[int], np.ndarray]:
+    """cut a series such that the subsamples have a constant number of events.
+    it is assumed that the magnitudes are ordered as desired (e.g. in time or
+    in depth)
 
     Args:
         series:     array of values
         n_sample:   number of subsamples to cut the series into
-        times:      array of times corresponding to the values of the series,
-                optional
         offset:     offset where to start cutting the series
 
     Returns:
         idx:            indices of the subsamples
         subsamples:     list of subsamples
-        subsample_times:list times corresponding to the subsamples
-
     """
     n_b = np.round(len(series) / n_sample).astype(int)
     idx = np.arange(offset, len(series), n_b)
     idx = idx[1:]
 
     subsamples = np.array_split(series[offset:], idx - offset)
-    if times is not None:
-        subsamples_times = np.array_split(times[offset:], idx - offset)
-        return idx, subsamples, subsamples_times
-
     return idx, subsamples
 
 
 def cut_random_idx(
-    series: np.ndarray, n_sample: int, times: None | np.ndarray = None
-) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
-    """cut a series at random idx points.
+    series: np.ndarray,
+    n_sample: int,
+) -> tuple[list[int], np.ndarray]:
+    """cut a series at random idx points. it is assumed that the magnitudesa
+    are ordered as desired (e.g. in time or in depth)
 
     Args:
         series:     array of values
         n_sample:   number of subsamples to cut the series into
-        times:      array of times corresponding to the values of the series
 
     Returns:
         idx:            indices of the subsamples
         subsamples:     list of subsamples
-        subsample_times:list of times corresponding to the subsamples
-
     """
     # generate random index
     idx = random.sample(list(np.arange(1, len(series))), n_sample - 1)
-
     idx = np.sort(idx)
+
     subsamples = np.array_split(series, idx)
-
-    if times is not None:
-        subsamples_times = np.array_split(times, idx)
-        return idx, subsamples, subsamples_times
-
     return idx, subsamples
 
 
-def cut_random_time(
+def cut_random(
     series: np.ndarray,
     n_sample: int,
-    times: np.ndarray[dt.datetime],
-) -> tuple[list[int], np.ndarray] | tuple[list[int], np.ndarray, np.ndarray]:
+    order: np.ndarray,
+) -> tuple[list[int], np.ndarray]:
     """cut a series at random times.
 
     Args:
         series:     array of values
         n_sample:   number of subsamples to cut the series into
-        times:      array of times corresponding to the values of the series
+        order:      array of values that can be used to sort the series.
+                this could be e.g. the time or the depth of the events.
+                Important: order itself is expected to be sorted.
 
     Returns:
         idx:            indices of the subsamples
@@ -93,18 +82,14 @@ def cut_random_time(
 
     """
     # generate random index
-    times = np.sort(times)
-    random_times = (
-        np.random.rand(n_sample - 1) * (times[-1] - times[0]) + times[0]
+    random_choice = (
+        np.random.rand(n_sample - 1) * (order[-1] - order[0]) + order[0]
     )
-
-    idx = np.searchsorted(times, random_times)
+    idx = np.searchsorted(order, random_choice)
     idx = np.sort(idx)
 
     subsamples = np.array_split(series, idx)
-    subsamples_times = np.array_split(times, idx)
-
-    return idx, subsamples, subsamples_times
+    return idx, subsamples
 
 
 def random_samples_pos(
@@ -113,7 +98,9 @@ def random_samples_pos(
     n_sample: int,
     delta_m: float = 0.1,
     return_idx: bool = False,
-):
+    cutting: str = "random_idx",
+    order: None | np.ndarray = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values
 
@@ -124,44 +111,122 @@ def random_samples_pos(
         delta_m:        magnitude bin width
         return_idx:     if True, return the indices of the subsamples
         cutting:        method of cutting the data into subsamples. either
-                    'random' or 'constant'
+                    'random_idx' or 'constant_idx' or 'random'
+        order:          array of values that can be used to sort the
+                    magnitudes, if left as None, it will be assumed that the
+                    desired order is in time.
 
     """
+
+    if order is None:
+        order = times
+
     # cut
-    idx, mags_chunks, times_chunks = cut_random_idx(
-        magnitudes, n_sample, times
-    )
+    if cutting == "random_idx":
+        idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
+    elif cutting == "constant_idx":
+        idx, mags_chunks = cut_constant_idx(magnitudes, n_sample)
+    elif cutting == "random":
+        idx, mags_chunks = cut_random(magnitudes, n_sample, order)
+    else:
+        raise ValueError(
+            "cutting method not recognized, use either 'random_idx' or "
+            "'constant_idx' or 'random_time' for the cutting variable"
+        )
+    # cut time in the same way (later for b-positive)
+    times_chunks = np.array_split(times, idx)
 
     # estimate b-values
     b_series = np.zeros(n_sample)
-    n_bs = np.zeros(len(idx) - 1)
+    n_bs = np.zeros(n_sample)
 
-    for ii in range(len(idx) - 1):
-        mags_loop = mags_chunks[ii]
-        times_loop = times_chunks[ii]
+    for ii, mags_loop in enumerate(mags_chunks):
+        # sort the magnitudes by their time (only if magnitudes were not
+        # ordered by time)
+        if order is not None:
+            times_loop = times_chunks[ii]
+            idx_sorted = np.argsort(times_loop)
+            mags_loop = mags_loop[idx_sorted]
 
-        # sort the magnitudes by their time
-        idx_sorted = np.argsort(times_loop)
-        mags_loop = mags_loop[idx_sorted]
-
-        b_series[ii], n_bs[ii] = estimate_b_positive(
-            np.array(mags_loop), delta_m=delta_m, n_b=True
-        )
+        if len(mags_loop) > 2:
+            b_series[ii], n_bs[ii] = estimate_b_positive(
+                np.array(mags_loop), delta_m=delta_m, return_n=True
+            )
 
     if return_idx is True:
-        return b_series, n_bs.astype(int), idx
+        # return the first index of each subsample
+        return b_series, n_bs.astype(int), np.append(0, idx)
 
     return b_series, n_bs.astype(int)
 
 
-def get_acf_random_pos(
+def random_samples(
+    magnitudes: np.ndarray,
+    n_sample: int,
+    mc: float,
+    delta_m: float = 0.1,
+    return_idx: bool = False,
+    cutting: str = "random_idx",
+    order: None | np.ndarray = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """cut the magnitudes randomly into n_series subsamples and estimate
+    b-values
+
+    Args:
+        magnitudes:     array of magnitudes
+        n_sample:       number of subsamples to cut the data into
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width, assumed to be 0.1 if not given
+        return_idx:     if True, return the indices of the subsamples
+        cutting:        method of cutting the data into subsamples. either
+                    'random_idx' or 'constant_idx' or 'random'
+        order:          array of values that can be used to sort the
+                    magnitudes
+    """
+
+    # cut
+    if cutting == "random_idx":
+        idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
+    elif cutting == "constant_idx":
+        idx, mags_chunks = cut_constant_idx(magnitudes, n_sample)
+    elif cutting == "random":
+        idx, mags_chunks = cut_random(magnitudes, n_sample, order)
+    else:
+        raise ValueError(
+            "cutting method not recognized, use either 'random_idx' or "
+            "'constant_idx' or 'random_time' for the cutting variable"
+        )
+
+    # estimate b-values
+    b_series = np.zeros(n_sample)
+    n_bs = np.zeros(n_sample)
+
+    for ii, mags_loop in enumerate(mags_chunks):
+        if len(mags_loop) > 1:
+            b_series[ii] = estimate_b_tinti(
+                np.array(mags_loop), mc=mc, delta_m=delta_m
+            )
+            n_bs[ii] = len(mags_loop)
+
+    if return_idx is True:
+        # return the first index of each subsample
+        return b_series, n_bs.astype(int), np.append(0, idx)
+
+    return b_series, n_bs.astype(int)
+
+
+def get_acf_random(
     magnitudes: np.ndarray,
     times: np.ndarray[dt.datetime],
-    n_series: int,
+    n_sample: int,
+    mc: None | float = None,
     delta_m: float = 0.1,
     nb_min: int = 2,
     n: int = 1000,
     transform: bool = True,
+    cutting: str = "random_idx",
+    order: None | np.ndarray = None,
+    b_method="positive",
 ):
     """estimates the autocorrelation from randomly sampling the magnitudes
 
@@ -169,11 +234,20 @@ def get_acf_random_pos(
         magnitudes:     array of magnitudes (not the differences!)
         times:          array of times that correspond to magnitudes
         n_series:       number of series to cut the data into
-        delta_m:        magnitude bin width
+        mc:             completeness magnitude, only needed if b_method is
+                    'tinti'
+        delta_m:        magnitude bin width, assumed to be 0.1 if not given
         nb_min:         minimum number of events in a series
         n:              number of random samples
         transform:      if True, transform b-values such that they are all
                     comparable regardless of the number of events used
+        cutting:        method of cutting the data into subsamples. either
+                    'random_idx' or 'constant_idx' or 'random_time'
+        order:          array of values that can be used to sort the
+                    magnitudes, if left as None, it will be assumed that the
+                    desired order is in time.
+        b_method:       method to use for the b-value estimation. either
+                    'positive' or 'tinti'.
 
     Returns:
         acfs:           array of acfs (for each random sample)
@@ -183,17 +257,39 @@ def get_acf_random_pos(
 
     # estimate b-value for all data (note: magnitudes might be ordered by
     # space, therefore sort by time is necessary)
-    idx = np.argsort(times)
-    mags_sorted = magnitudes[idx]
-    b_all = estimate_b_positive(mags_sorted, delta_m=delta_m)
+    if b_method == "positive":
+        idx = np.argsort(times)
+        mags_sorted = magnitudes[idx]
+        b_all = estimate_b_positive(mags_sorted, delta_m=delta_m)
+    elif b_method == "tinti":
+        b_all = estimate_b_tinti(magnitudes, mc=mc, delta_m=delta_m)
+    else:
+        raise ValueError(
+            "b_method not recognized, use either 'positive' or 'tinti'"
+        )
 
     # estimate autocorrelation function for random sampples
     acfs = np.zeros(n)
     n_series_used = np.zeros(n)
     for ii in range(n):
-        b_series, n_bs = random_samples_pos(
-            magnitudes, times, n_series, delta_m=delta_m
-        )
+        if b_method == "positive":
+            b_series, n_bs = random_samples_pos(
+                magnitudes,
+                times,
+                n_sample,
+                delta_m=delta_m,
+                cutting=cutting,
+                order=order,
+            )
+        elif b_method == "tinti":
+            b_series, n_bs = random_samples(
+                magnitudes,
+                n_sample,
+                mc,
+                delta_m=delta_m,
+                cutting=cutting,
+                order=order,
+            )
 
         # transform b-value
         if transform is True:
@@ -217,103 +313,6 @@ def get_acf_random_pos(
         acfs[ii] = acf_lag_n(b_series, lag=1)
         if np.isnan(acfs[ii]):
             warnings.warn("nan encountered in acf, check what is going on")
-            acfs[ii] = 0
-
-        n_series_used[ii] = sum(np.array(~idx))
-
-    return acfs, n_series_used
-
-
-def random_samples(
-    magnitudes: np.ndarray,
-    n_sample: int,
-    mc: float = 0,
-    delta_m: float = 0.1,
-    return_idx: bool = False,
-):
-    """cut the magnitudes randomly into n_series subsamples and estimate
-    b-values"""
-    # cut
-    idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
-
-    # estimate b-values
-    b_series = np.zeros(n_sample)
-    n_bs = np.zeros(len(idx) - 1)
-
-    for ii in range(len(idx) - 1):
-        mags_loop = mags_chunks[ii]
-        b_series[ii] = estimate_b_tinti(
-            np.array(mags_loop), mc=mc, delta_m=delta_m
-        )
-        n_bs[ii] = len(mags_loop)
-
-    if return_idx is True:
-        return b_series, n_bs.astype(int), idx
-
-    return b_series, n_bs.astype(int)
-
-
-def get_acf_random(
-    magnitudes: np.ndarray,
-    n_series: int,
-    mc: float = 0,
-    delta_m: float = 0.1,
-    nb_min: int = 2,
-    n: int = 1000,
-    transform: bool = True,
-):
-    """estimates the autocorrelation from randomly sampling the magnitudes
-
-    Args:
-        magnitudes: array of magnitudes (not the differences!)
-        n_series:   number of series to cut the data into
-        mc:         completeness magnitude
-        delta_m:    magnitude bin width
-        nb_min:     minimum number of events in a series
-        n:          number of random samples
-        transform:  if True, transform b-values such that they are all
-                comparable regardless of the number of events used
-
-    Returns:
-        acfs (np.array):            array of acfs (for each random sample)
-        n_series_used (np.array):   array of number of b-values used for the
-                                crosscorrelation
-    """
-
-    # estimate b-value for all data
-    b_all = estimate_b_tinti(magnitudes, mc=mc, delta_m=delta_m)
-
-    # estimate autocorrelation function for random sampples
-    acfs = np.zeros(n)
-    n_series_used = np.zeros(n)
-    for ii in range(n):
-        b_series, n_bs = random_samples_pos(
-            magnitudes, n_series, mc=mc, delta_m=delta_m
-        )
-
-        # transform b-value
-        if transform is True:
-            for jj in range(len(b_series)):
-                b_series[jj] = transform_n(
-                    b_series[jj], b_all, n_bs[jj], np.max(n_bs)
-                )
-
-        # filter out nan and inf from b-values
-        idx_nan = np.isnan(b_series)
-        if sum(idx_nan) > 0:
-            warnings.warn(
-                "nan encountered in b-series, check what is going on"
-            )
-        idx_inf = np.isinf(b_series)
-        idx_min = n_bs < nb_min
-        idx = idx_nan | idx_inf | idx_min
-        b_series[idx] = np.mean(b_series[~idx])
-
-        # estimate acf
-        acfs[ii] = acf_lag_n(b_series, lag=1)
-        if np.isnan(acfs[ii]):
-            warnings.warn("nan encountered in acf, check what is going on")
-            acfs[ii] = 0
 
         n_series_used[ii] = sum(np.array(~idx))
 
