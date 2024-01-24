@@ -8,11 +8,13 @@ from functions.core_functions import get_acf_random
 from functions.general_functions import simulated_magnitudes_binned
 import itertools as it
 import time as time_module
+import os
 
 # ---------------------------------------------- #
 # running index for parallelization
 # ---------------------------------------------- #
-cl_idx = 0
+cl_idx = int(os.getenv('SLURM_ARRAY_TASK_ID'))
+print('running index:', cl_idx, 'type', type(cl_idx))
 t = time_module.time()
 
 # ---------------------------------------------- #
