@@ -13,14 +13,14 @@ import os
 # ---------------------------------------------- #
 # running index for parallelization
 # ---------------------------------------------- #
-cl_idx = int(os.getenv('SLURM_ARRAY_TASK_ID'))
-print('running index:', cl_idx, 'type', type(cl_idx))
+cl_idx = int(os.getenv("SLURM_ARRAY_TASK_ID"))
+print("running index:", cl_idx, "type", type(cl_idx))
 t = time_module.time()
 
 # ---------------------------------------------- #
 # fixed parameters
 # ---------------------------------------------- #
-n = 2  # number of times the magnitudesa are simulated to get the statistics
+n = 500  # number of times the magnitudesa are simulated to get the statistics
 
 mc = 0
 delta_m = 0.1
