@@ -293,12 +293,12 @@ def get_acf_random(
         )
 
     # estimate autocorrelation function for random sampples
-    acfs = np.zeros(n)
-    n_series_used = np.zeros(n)
     if cutting == "constant_idx":
         # for constant window approach, the sindow has to be shifted exactly
-        # the number of samples per estimate
-        n = int(len(magnitudes) / n_sample)
+        # the number of samples per estimate (minus one for no repititions)
+        n = int(len(magnitudes) / n_sample) - 1
+    acfs = np.zeros(n)
+    n_series_used = np.zeros(n)
     for ii in range(n):
         if b_method == "positive":
             b_series, n_bs = b_samples_pos(
@@ -353,7 +353,4 @@ def get_acf_random(
             warnings.warn("nan encountered in acf, check what is going on")
 
         n_series_used[ii] = sum(np.array(~idx))
-
-    acfs = acfs[n_series_used != 0]
-    n_series_used = n_series_used[n_series_used != 0]
     return acfs, n_series_used
