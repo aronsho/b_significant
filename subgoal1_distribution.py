@@ -7,11 +7,13 @@ import numpy as np
 from functions.core_functions import get_acf_random
 from functions.general_functions import simulated_magnitudes_binned
 import itertools as it
+import time as time_module
 
 # ---------------------------------------------- #
 # running index for parallelization
 # ---------------------------------------------- #
 cl_idx = 0
+t = time_module.time()
 
 # ---------------------------------------------- #
 # fixed parameters
@@ -25,8 +27,8 @@ delta_m = 0.1
 
 b_parameter = "b_value"
 
-cutting = "random_idx"
-# cutting =  "constant_idx"
+# cutting = "random_idx"
+cutting = "constant_idx"
 # cutting = "random"
 transform = True
 # transform = False
@@ -49,8 +51,8 @@ all_permutations = [
 all_permutations = np.array(all_permutations)
 
 # parameter vectors to run through with cl_idx
-cl_n_series = all_permutations[:, 0]
-cl_n_totals = all_permutations[:, 1]
+cl_n_series = all_permutations[:, 0].astype(int)
+cl_n_totals = all_permutations[:, 1].astype(int)
 cl_bs = all_permutations[:, 2]
 
 # -----------------------------------------------#
@@ -92,14 +94,23 @@ for ii in range(n):
 
 acf_mean = np.array(acf_mean)
 
-save_str = (
-    "results/distributions/cutting_"
-    + str(cutting)
-    + "/transform_"
-    + str(transform)
-    + "/"
-    "acf_mean_" + str(cl_idx) + ".csv"
-)
+
+if cutting == "constant_idx":
+    save_str = (
+        "results/distributions/cutting_" + str(cutting) + "/"
+        "acf_mean_" + str(cl_idx) + ".csv"
+    )
+else:
+    save_str = (
+        "results/distributions/cutting_"
+        + str(cutting)
+        + "/transform_"
+        + str(transform)
+        + "/"
+        "acf_mean_" + str(cl_idx) + ".csv"
+    )
 
 
 np.savetxt(save_str, acf_mean, delimiter=",")
+
+print("time = ", time_module.time() - t)

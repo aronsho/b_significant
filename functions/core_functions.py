@@ -32,9 +32,21 @@ def cut_constant_idx(
     """
     n_b = np.round(len(series) / n_sample).astype(int)
     idx = np.arange(offset, len(series), n_b)
-    idx = idx[1:]
+
+    if offset > n_b:
+        warnings.warn(
+            "offset is larger than the number of events per subsample, this"
+            "will lead to cutting off more events than necessary"
+        )
 
     subsamples = np.array_split(series[offset:], idx - offset)
+
+    # make sure that incomplete data does not distort the results
+    if len(subsamples[-1]) < n_b:
+        subsamples.pop(-1)
+    if len(subsamples[0]) < n_b:
+        subsamples.pop(0)
+
     return idx, subsamples
 
 
@@ -210,8 +222,8 @@ def b_samples(
         )
 
     # estimate b-values
-    b_series = np.zeros(n_sample)
-    n_bs = np.zeros(n_sample)
+    b_series = np.zeros(len(mags_chunks))
+    n_bs = np.zeros(len(mags_chunks))
 
     for ii, mags_loop in enumerate(mags_chunks):
         if len(mags_loop) > 1:
@@ -283,7 +295,7 @@ def get_acf_random(
     # estimate autocorrelation function for random sampples
     acfs = np.zeros(n)
     n_series_used = np.zeros(n)
-    if cutting == "constant":
+    if cutting == "constant_idx":
         # for constant window approach, the sindow has to be shifted exactly
         # the number of samples per estimate
         n = int(len(magnitudes) / n_sample)
@@ -342,4 +354,6 @@ def get_acf_random(
 
         n_series_used[ii] = sum(np.array(~idx))
 
+    acfs = acfs[n_series_used != 0]
+    n_series_used = n_series_used[n_series_used != 0]
     return acfs, n_series_used
