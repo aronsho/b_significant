@@ -40,8 +40,6 @@ def acf_lag_n(series: np.ndarray, lag: int = 1):
             (series[lag:] - np.mean(series))
             * (series[:-lag] - np.mean(series))
         )
-        # print(sum((b_series - np.mean(b_series)) ** 2), "sum")
-        # print(len(b_series), np.mean(b_series), "len, mean")
         acf /= sum((series - np.mean(series)) ** 2)
     return acf
 

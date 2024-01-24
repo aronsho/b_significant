@@ -81,6 +81,10 @@ def cut_random(
         subsample_times:list of times corresponding to the subsamples
 
     """
+    if order is None:
+        # value errpor
+        raise ValueError("order cannot be None")
+
     # generate random index
     random_choice = (
         np.random.rand(n_sample - 1) * (order[-1] - order[0]) + order[0]
@@ -92,7 +96,7 @@ def cut_random(
     return idx, subsamples
 
 
-def random_samples_pos(
+def b_samples_pos(
     magnitudes: np.ndarray,
     times: np.ndarray[dt.datetime],
     n_sample: int,
@@ -100,6 +104,7 @@ def random_samples_pos(
     return_idx: bool = False,
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
+    offset: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values
@@ -125,13 +130,15 @@ def random_samples_pos(
     if cutting == "random_idx":
         idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
     elif cutting == "constant_idx":
-        idx, mags_chunks = cut_constant_idx(magnitudes, n_sample)
+        idx, mags_chunks = cut_constant_idx(
+            magnitudes, n_sample, offset=offset
+        )
     elif cutting == "random":
         idx, mags_chunks = cut_random(magnitudes, n_sample, order)
     else:
         raise ValueError(
             "cutting method not recognized, use either 'random_idx' or "
-            "'constant_idx' or 'random_time' for the cutting variable"
+            "'constant_idx' or 'random' for the cutting variable"
         )
     # cut time in the same way (later for b-positive)
     times_chunks = np.array_split(times, idx)
@@ -160,7 +167,7 @@ def random_samples_pos(
     return b_series, n_bs.astype(int)
 
 
-def random_samples(
+def b_samples(
     magnitudes: np.ndarray,
     n_sample: int,
     mc: float,
@@ -168,6 +175,7 @@ def random_samples(
     return_idx: bool = False,
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
+    offset: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values
@@ -182,19 +190,23 @@ def random_samples(
                     'random_idx' or 'constant_idx' or 'random'
         order:          array of values that can be used to sort the
                     magnitudes
+        offset:         offset where to start cutting the series (only for
+                    cutting = 'constant_idx')
     """
 
     # cut
     if cutting == "random_idx":
         idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
     elif cutting == "constant_idx":
-        idx, mags_chunks = cut_constant_idx(magnitudes, n_sample)
+        idx, mags_chunks = cut_constant_idx(
+            magnitudes, n_sample, offset=offset
+        )
     elif cutting == "random":
         idx, mags_chunks = cut_random(magnitudes, n_sample, order)
     else:
         raise ValueError(
             "cutting method not recognized, use either 'random_idx' or "
-            "'constant_idx' or 'random_time' for the cutting variable"
+            "'constant_idx' or 'random' for the cutting variable"
         )
 
     # estimate b-values
@@ -242,7 +254,7 @@ def get_acf_random(
         transform:      if True, transform b-values such that they are all
                     comparable regardless of the number of events used
         cutting:        method of cutting the data into subsamples. either
-                    'random_idx' or 'constant_idx' or 'random_time'
+                    'random_idx' or 'random'
         order:          array of values that can be used to sort the
                     magnitudes, if left as None, it will be assumed that the
                     desired order is in time.
@@ -271,24 +283,34 @@ def get_acf_random(
     # estimate autocorrelation function for random sampples
     acfs = np.zeros(n)
     n_series_used = np.zeros(n)
+    if cutting == "constant":
+        # for constant window approach, the sindow has to be shifted exactly
+        # the number of samples per estimate
+        n = int(len(magnitudes) / n_sample)
     for ii in range(n):
         if b_method == "positive":
-            b_series, n_bs = random_samples_pos(
+            b_series, n_bs = b_samples_pos(
                 magnitudes,
                 times,
                 n_sample,
                 delta_m=delta_m,
                 cutting=cutting,
                 order=order,
+                offset=ii,
             )
         elif b_method == "tinti":
-            b_series, n_bs = random_samples(
+            # make sure that order is not none when using cutting method
+            # 'random'
+            if cutting == "random" and order is None:
+                order = times
+            b_series, n_bs = b_samples(
                 magnitudes,
                 n_sample,
                 mc,
                 delta_m=delta_m,
                 cutting=cutting,
                 order=order,
+                offset=ii,
             )
 
         # transform b-value
@@ -305,6 +327,10 @@ def get_acf_random(
                 "nan encountered in b-series, check what is going on"
             )
         idx_inf = np.isinf(b_series)
+        if sum(idx_inf) > 0:
+            warnings.warn(
+                "inf encountered in b-series, check what is going on"
+            )
         idx_min = n_bs < nb_min
         idx = idx_nan | idx_inf | idx_min
         b_series[idx] = np.mean(b_series[~idx])
