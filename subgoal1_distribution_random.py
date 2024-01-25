@@ -4,7 +4,7 @@
 # same as Resolution_2.py but without transformation
 
 import numpy as np
-from functions.core_functions import get_acf_random
+from functions.core_functions import mean_autocorrelation
 from functions.general_functions import simulated_magnitudes_binned
 import itertools as it
 import time as time_module
@@ -29,11 +29,8 @@ delta_m = 0.1
 
 b_parameter = "b_value"
 
-# cutting = "random_idx"
-# cutting = "constant_idx"
 cutting = "random"
 transform = True
-# transform = False
 
 # ---------------------------------------------- #
 # varying parameters
@@ -74,7 +71,7 @@ for ii in range(n):
     times = np.random.rand(len(mags)) * 1000
     times = np.sort(times)
 
-    acfs, n_series_used = get_acf_random(
+    acfs, n_series_used = mean_autocorrelation(
         mags,
         times,
         n_sample=cl_n_series[cl_idx],
