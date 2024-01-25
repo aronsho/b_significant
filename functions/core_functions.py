@@ -41,12 +41,6 @@ def cut_constant_idx(
 
     subsamples = np.array_split(series[offset:], idx - offset)
 
-    # make sure that incomplete data does not distort the results
-    if len(subsamples[-1]) < n_b:
-        subsamples.pop(-1)
-    if len(subsamples[0]) < n_b:
-        subsamples.pop(0)
-
     return idx, subsamples
 
 
@@ -155,6 +149,17 @@ def b_samples_pos(
     # cut time in the same way (later for b-positive)
     times_chunks = np.array_split(times, idx)
 
+    # make sure that data at the edges is not included if not enough samples
+    n_b = np.round(len(magnitudes) / n_sample).astype(int)
+    if len(mags_chunks[-1]) < n_b:
+        mags_chunks.pop(-1)
+        times_chunks.pop(-1)
+        idx = idx[:-1]
+    if len(mags_chunks[0]) < n_b:
+        mags_chunks.pop(0)
+        times_chunks.pop(0)
+        idx = idx[:-1]
+
     # estimate b-values
     b_series = np.zeros(n_sample)
     n_bs = np.zeros(n_sample)
@@ -171,6 +176,8 @@ def b_samples_pos(
             b_series[ii], n_bs[ii] = estimate_b_positive(
                 np.array(mags_loop), delta_m=delta_m, return_n=True
             )
+        else:
+            b_series[ii] = np.nan
 
     if return_idx is True:
         # return the first index of each subsample
@@ -221,6 +228,15 @@ def b_samples(
             "'constant_idx' or 'random' for the cutting variable"
         )
 
+    # make sure that data at the edges is not included if not enough samples
+    n_b = np.round(len(magnitudes) / n_sample).astype(int)
+    if len(mags_chunks[-1]) < n_b:
+        mags_chunks.pop(-1)
+        idx = idx[:-1]
+    if len(mags_chunks[0]) < n_b:
+        mags_chunks.pop(0)
+        idx = idx[:-1]
+
     # estimate b-values
     b_series = np.zeros(len(mags_chunks))
     n_bs = np.zeros(len(mags_chunks))
@@ -231,6 +247,8 @@ def b_samples(
                 np.array(mags_loop), mc=mc, delta_m=delta_m
             )
             n_bs[ii] = len(mags_loop)
+        else:
+            b_series[ii] = np.nan
 
     if return_idx is True:
         # return the first index of each subsample
@@ -239,7 +257,7 @@ def b_samples(
     return b_series, n_bs.astype(int)
 
 
-def get_acf_random(
+def mean_autocorrelation(
     magnitudes: np.ndarray,
     times: np.ndarray[dt.datetime],
     n_sample: int,
