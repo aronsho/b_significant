@@ -58,26 +58,22 @@ cl_n_totals = all_permutations[:, 1].astype(int)
 cl_bs = all_permutations[:, 2]
 
 # -----------------------------------------------#
-# simulate magnitudes
+# simulate magnitudes and calculate acf
 # -----------------------------------------------#
 
-mags = simulated_magnitudes_binned(
-    cl_n_totals[cl_idx],
-    cl_bs[cl_idx],
-    mc,
-    delta_m,
-)
-
-times = np.random.rand(len(mags)) * 1000
-times = np.sort(times)
-
-
-# -----------------------------------------------#
-# calculate acf
-# -----------------------------------------------#
 acf_mean = []
 
 for ii in range(n):
+    mags = simulated_magnitudes_binned(
+        cl_n_totals[cl_idx],
+        cl_bs[cl_idx],
+        mc,
+        delta_m,
+    )
+
+    times = np.random.rand(len(mags)) * 1000
+    times = np.sort(times)
+
     acfs, n_series_used = get_acf_random(
         mags,
         times,
