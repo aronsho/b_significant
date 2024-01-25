@@ -47,6 +47,7 @@ def cut_constant_idx(
 def cut_random_idx(
     series: np.ndarray,
     n_sample: int,
+    n_min: int | None = None,
 ) -> tuple[list[int], np.ndarray]:
     """cut a series at random idx points. it is assumed that the magnitudesa
     are ordered as desired (e.g. in time or in depth)
@@ -54,16 +55,59 @@ def cut_random_idx(
     Args:
         series:     array of values
         n_sample:   number of subsamples to cut the series into
+        nb_min:     minimum number of events in a subsample
 
     Returns:
         idx:            indices of the subsamples
         subsamples:     list of subsamples
     """
-    # generate random index
-    idx = random.sample(list(np.arange(1, len(series))), n_sample - 1)
-    idx = np.sort(idx)
+    if n_min is None:
+        # generate random index
+        idx = random.sample(list(np.arange(1, len(series))), n_sample - 1)
+    elif n_min < 3:
+        # make sure that there are at least nb_min events in each subsample
+        # if nb_min is very small, most of the time it is faster to trial and
+        # error
+        check = False
+        count = 0
+        while check is False and count < 1e5:
+            # generate random index
+            idx = random.sample(list(np.arange(1, len(series))), n_sample - 1)
+            idx = np.sort(idx)
+            if (
+                min(np.diff(np.concatenate(([0], idx, [len(series)]))))
+                >= n_min
+            ):
+                check = True
+            count += 1
+        if count == 1e5:
+            raise ValueError(
+                "could not find a solution for the given parameters. try"
+                " making nb_min smaller"
+            )
+    else:
+        # make sure that there are at least nb_min events in each subsample
+        # if nb_min larger, then it is faster to exclude already chosen values
+        # and surrounding ones
+        idx = []
+        available = list(np.arange(1, len(series)))
+        for ii in range(n_sample):
+            if len(available) < 1:
+                raise ValueError(
+                    "could not find a solution for the given parameters. try"
+                    " making nb_min smaller"
+                )
+            idx.append(random.sample(available, 1)[0])
+            idx_loop = available.index(idx[-1])
 
+            for jj in range(-n_min + 1, n_min):
+                if idx_loop - jj >= 0 and idx_loop - jj < len(available):
+                    available.pop(idx_loop - jj)
+
+        idx = np.array(idx)
+    idx = np.sort(idx)
     subsamples = np.array_split(series, idx)
+
     return idx, subsamples
 
 
@@ -111,6 +155,7 @@ def b_samples_pos(
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
     offset: int = 0,
+    nb_min: int = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values
@@ -126,6 +171,10 @@ def b_samples_pos(
         order:          array of values that can be used to sort the
                     magnitudes, if left as None, it will be assumed that the
                     desired order is in time.
+        offset:         offset where to start cutting the series (only for
+                    cutting = 'constant_idx')
+        nb_min:         minimum number of events in a subsample (only for the
+                    cutting method 'random_idx' relevant)
 
     """
 
@@ -134,7 +183,9 @@ def b_samples_pos(
 
     # cut
     if cutting == "random_idx":
-        idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
+        idx, mags_chunks = cut_random_idx(
+            magnitudes, n_sample, n_min=nb_min + 1
+        )
     elif cutting == "constant_idx":
         idx, mags_chunks = cut_constant_idx(
             magnitudes, n_sample, offset=offset
@@ -195,6 +246,7 @@ def b_samples(
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
     offset: int = 0,
+    nb_min: int = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """cut the magnitudes randomly into n_series subsamples and estimate
     b-values
@@ -211,11 +263,13 @@ def b_samples(
                     magnitudes
         offset:         offset where to start cutting the series (only for
                     cutting = 'constant_idx')
+        nb_min:         minimum number of events in a subsample (only for the
+                    cutting method 'random_idx' relevant)
     """
 
     # cut
     if cutting == "random_idx":
-        idx, mags_chunks = cut_random_idx(magnitudes, n_sample)
+        idx, mags_chunks = cut_random_idx(magnitudes, n_sample, n_min=nb_min)
     elif cutting == "constant_idx":
         idx, mags_chunks = cut_constant_idx(
             magnitudes, n_sample, offset=offset
@@ -327,6 +381,9 @@ def mean_autocorrelation(
                 cutting=cutting,
                 order=order,
                 offset=ii,
+                nb_min=2,  # it seems that it doesnt make a big difference if
+                # this is filtered here or later, therefore it will be done
+                # later as more efficient computationally.
             )
         elif b_method == "tinti":
             # make sure that order is not none when using cutting method
@@ -341,8 +398,10 @@ def mean_autocorrelation(
                 cutting=cutting,
                 order=order,
                 offset=ii,
+                nb_min=2,  # it seems that it doesnt make a big difference if
+                # this is filtered here or later, therefore it will be done
+                # later as more efficient computationally.
             )
-
         # transform b-value
         if transform is True:
             for jj in range(len(b_series)):
