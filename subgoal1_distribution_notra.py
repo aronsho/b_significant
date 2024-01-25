@@ -32,8 +32,8 @@ b_parameter = "b_value"
 cutting = "random_idx"
 # cutting = "constant_idx"
 # cutting = "random"
-transform = True
-# transform = False
+# transform = True
+transform = False
 
 # ---------------------------------------------- #
 # varying parameters

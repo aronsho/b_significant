@@ -29,11 +29,11 @@ delta_m = 0.1
 
 b_parameter = "b_value"
 
-cutting = "random_idx"
+# cutting = "random_idx"
 # cutting = "constant_idx"
-# cutting = "random"
-transform = True
-# transform = False
+cutting = "random"
+# transform = True
+transform = False
 
 # ---------------------------------------------- #
 # varying parameters
