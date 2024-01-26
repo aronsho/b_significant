@@ -55,7 +55,7 @@ def cut_random_idx(
     Args:
         series:     array of values
         n_sample:   number of subsamples to cut the series into
-        nb_min:     minimum number of events in a subsample
+        n_min:     minimum number of events in a subsample
 
     Returns:
         idx:            indices of the subsamples
@@ -66,8 +66,8 @@ def cut_random_idx(
         idx = random.sample(list(np.arange(1, len(series))), n_sample - 1)
         idx = np.sort(idx)
     elif n_min < 4:
-        # make sure that there are at least nb_min events in each subsample
-        # if nb_min is very small, most of the time it is faster to trial and
+        # make sure that there are at least n_min events in each subsample
+        # if n_min is very small, most of the time it is faster to trial and
         # error
         check = False
         count = 0
@@ -87,8 +87,8 @@ def cut_random_idx(
                 " making nb_min smaller"
             )
     else:
-        # make sure that there are at least nb_min events in each subsample
-        # if nb_min larger, then it is faster to exclude already chosen values
+        # make sure that there are at least n_min events in each subsample
+        # if n_min larger, then it is faster to exclude already chosen values
         # and surrounding ones
         idx = np.zeros(n_sample - 1)
         available = list(np.arange(1, len(series)))
@@ -181,9 +181,7 @@ def b_samples_pos(
 
     # cut
     if cutting == "random_idx":
-        idx, mags_chunks = cut_random_idx(
-            magnitudes, n_sample, n_min=nb_min + 1
-        )
+        idx, mags_chunks = cut_random_idx(magnitudes, n_sample, n_min=nb_min)
     elif cutting == "constant_idx":
         idx, mags_chunks = cut_constant_idx(
             magnitudes, n_sample, offset=offset
@@ -210,8 +208,8 @@ def b_samples_pos(
         idx = idx[:-1]
 
     # estimate b-values
-    b_series = np.zeros(n_sample)
-    n_bs = np.zeros(n_sample)
+    b_series = np.zeros(len(mags_chunks))
+    n_bs = np.zeros(len(mags_chunks))
 
     for ii, mags_loop in enumerate(mags_chunks):
         # sort the magnitudes by their time (only if magnitudes were not
@@ -381,8 +379,8 @@ def autocorrelation(
                 cutting=cutting,
                 order=order,
                 offset=ii,
-                nb_min=2,  # it seems that it doesnt make a big difference if
-                # this is filtered here or later, therefore it will be done
+                nb_min=None,  # it seems that it doesnt make a big difference
+                # if this is filtered here or later, therefore it will be done
                 # later as more efficient computationally.
             )
         elif b_method == "tinti":
@@ -398,8 +396,8 @@ def autocorrelation(
                 cutting=cutting,
                 order=order,
                 offset=ii,
-                nb_min=2,  # it seems that it doesnt make a big difference if
-                # this is filtered here or later, therefore it will be done
+                nb_min=None,  # it seems that it doesnt make a big difference
+                # if this is filtered here or later, therefore it will be done
                 # later as more efficient computationally.
             )
         # transform b-value
