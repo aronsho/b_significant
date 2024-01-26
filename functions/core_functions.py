@@ -64,7 +64,8 @@ def cut_random_idx(
     if n_min is None:
         # generate random index
         idx = random.sample(list(np.arange(1, len(series))), n_sample - 1)
-    elif n_min < 3:
+        idx = np.sort(idx)
+    elif n_min < 4:
         # make sure that there are at least nb_min events in each subsample
         # if nb_min is very small, most of the time it is faster to trial and
         # error
@@ -89,25 +90,22 @@ def cut_random_idx(
         # make sure that there are at least nb_min events in each subsample
         # if nb_min larger, then it is faster to exclude already chosen values
         # and surrounding ones
-        idx = []
+        idx = np.zeros(n_sample - 1)
         available = list(np.arange(1, len(series)))
-        for ii in range(n_sample):
+        for ii in range(n_sample - 1):
             if len(available) < 1:
                 raise ValueError(
                     "could not find a solution for the given parameters. try"
                     " making nb_min smaller"
                 )
-            idx.append(random.sample(available, 1)[0])
-            idx_loop = available.index(idx[-1])
-
+            idx[ii] = random.sample(available, 1)[0]
+            idx_loop = available.index(idx[ii])
             for jj in range(-n_min + 1, n_min):
                 if idx_loop - jj >= 0 and idx_loop - jj < len(available):
                     available.pop(idx_loop - jj)
+            idx = np.sort(idx).astype(int)
 
-        idx = np.array(idx)
-    idx = np.sort(idx)
     subsamples = np.array_split(series, idx)
-
     return idx, subsamples
 
 
@@ -311,20 +309,22 @@ def b_samples(
     return b_series, n_bs.astype(int)
 
 
-def mean_autocorrelation(
+def autocorrelation(
     magnitudes: np.ndarray,
     times: np.ndarray[dt.datetime],
     n_sample: int,
     mc: None | float = None,
     delta_m: float = 0.1,
     nb_min: int = 2,
-    n: int = 1000,
+    n: int = 1,
     transform: bool = True,
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
     b_method="positive",
 ):
-    """estimates the autocorrelation from randomly sampling the magnitudes
+    """estimates the autocorrelation from subsampling the magnitudes into
+    n_sample pieces, according to the method given in cutting. This process
+    will be done n=1 times as default, but can be increased as wished.
 
     Args:
         magnitudes:     array of magnitudes (not the differences!)
@@ -431,3 +431,62 @@ def mean_autocorrelation(
 
         n_series_used[ii] = sum(np.array(~idx))
     return acfs, n_series_used
+
+
+def mean_autocorrelation(
+    magnitudes: np.ndarray,
+    times: np.ndarray[dt.datetime],
+    n_sample: int,
+    mc: None | float = None,
+    delta_m: float = 0.1,
+    nb_min: int = 2,
+    n: int = 1000,
+    transform: bool = True,
+    cutting: str = "random_idx",
+    order: None | np.ndarray = None,
+    b_method="positive",
+):
+    """estimates the autocorrelation from randomly sampling the magnitudes
+
+    Args:
+        magnitudes:     array of magnitudes (not the differences!)
+        times:          array of times that correspond to magnitudes
+        n_series:       number of series to cut the data into
+        mc:             completeness magnitude, only needed if b_method is
+                    'tinti'
+        delta_m:        magnitude bin width, assumed to be 0.1 if not given
+        nb_min:         minimum number of events in a series
+        n:              number of random samples
+        transform:      if True, transform b-values such that they are all
+                    comparable regardless of the number of events used
+        cutting:        method of cutting the data into subsamples. either
+                    'random_idx' or 'random'
+        order:          array of values that can be used to sort the
+                    magnitudes, if left as None, it will be assumed that the
+                    desired order is in time.
+        b_method:       method to use for the b-value estimation. either
+                    'positive' or 'tinti'.
+
+    Returns:
+        acfs:           array of acfs (for each random sample)
+        n_series_used:  array of number of b-values used for the
+                    crosscorrelation
+    """
+    acfs, n_series_used = autocorrelation(
+        magnitudes,
+        times,
+        n_sample,
+        mc,
+        delta_m,
+        nb_min,
+        n,
+        transform,
+        cutting,
+        order,
+        b_method,
+    )
+
+    mean_acf = np.mean(acfs)
+    mean_n_series_used = np.mean(n_series_used)
+
+    return mean_acf, mean_n_series_used

@@ -59,6 +59,7 @@ cl_bs = all_permutations[:, 2]
 # -----------------------------------------------#
 
 acf_mean = []
+n_used_mean = []
 
 for ii in range(n):
     mags = simulated_magnitudes_binned(
@@ -77,18 +78,20 @@ for ii in range(n):
         n_sample=cl_n_series[cl_idx],
         mc=mc,
         delta_m=delta_m,
+        n=500,
         transform=transform,
         cutting=cutting,
         b_method="tinti",
     )
     acf_mean.append(np.mean(acfs))
+    n_used_mean.append(np.mean(n_series_used))
 
 # -----------------------------------------------#
 # save acfs
 # -----------------------------------------------#
 
 acf_mean = np.array(acf_mean)
-
+n_used_mean = np.array(n_used_mean)
 
 if cutting == "constant_idx":
     save_str = (
@@ -105,7 +108,9 @@ else:
         "acf_mean_" + str(cl_idx) + ".csv"
     )
 
-
 np.savetxt(save_str, acf_mean, delimiter=",")
+np.savetxt(
+    save_str.replace("acf_mean", "n_used_mean"), n_used_mean, delimiter=","
+)
 
 print("time = ", time_module.time() - t)
