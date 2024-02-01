@@ -6,6 +6,61 @@ from seismostats.analysis.estimate_beta import (
     estimate_b_tinti,
 )
 import datetime as dt
+import warnings
+
+
+def update_welford(existing_aggregate: tuple, new_value: float) -> tuple:
+    """Update Welford's algorithm for computing a running mean and standard
+    deviation
+
+    Args:
+        existing_aggregate:     (count, mean, M2) where count is the number
+                        of values used up tp that point, mean is the mean and
+                        M2 is the sum of the squares of the differences from
+                        the mean of the previous step
+        new_value:              new value of the series of which the standard
+                        deviation and mean is to be calculated
+
+    Returns:
+        aggregate:  (count, mean, M2) where count is the number of values used
+                        up tp that point, mean is the mean and M2 is the sum of
+                        the squares of the differences from the mean of this
+                        step
+    """
+    (count, mean, M2) = existing_aggregate
+    count += 1
+    delta = new_value - mean
+    mean += delta / count
+    delta2 = new_value - mean
+    M2 += delta * delta2
+    return (count, mean, M2)
+
+
+def finalize_welford(existing_aggregate: tuple) -> [float, float]:
+    """Retrieve the mean, variance and sample variance from an aggregate
+
+    Args:
+        existing_aggregate:  (count, mean, M2) where count is the number
+                        of values used up tp that point, mean is the mean and
+                        M2 is the sum of the squares of the differences for
+                        the whole series of which the standard deviation and
+                        mean is to be calculated
+
+    Returns:
+        mean:       mean of the series
+        variance:   variance of the series
+    """
+    (count, mean, M2) = existing_aggregate
+    if count < 2:
+        # raise warinng
+        warnings.warn("only one value used, therefore variance is not defined")
+        return mean, np.nan
+    else:
+        (mean, variance) = (
+            mean,
+            M2 / count,
+        )
+        return mean, variance
 
 
 def transform_n(x: float, b: float, n1: int, n2: int):
@@ -151,7 +206,6 @@ def b_any_series(
     mc: float = None,
     return_std: bool = False,
     overlap: float = 0,
-    offset: int = 0,
     return_time_bar: bool = True,
     method: str = "tinti",
 ):
@@ -168,8 +222,6 @@ def b_any_series(
         return_std:         if True, return the standard deviation of the
                         b-value
         overlap:            fraction of overlap between the time windows
-        offset:             index of the first event to use, should be
-                            smaller than n_b
         return_time_bar:    if True, return the time window lengths
         method:             method to use for the b-value estimation.
 
@@ -187,7 +239,11 @@ def b_any_series(
     if method == "positive":
         check_first = 0
         check_last = 0
+
         while check_last < len(magnitudes) - 1:
+            if check_last < check_first + n_b:
+                check_last = check_first + n_b
+
             check_last += 1
 
             loop_mags = magnitudes[check_first : check_last + 1]  # noqa
@@ -209,20 +265,22 @@ def b_any_series(
                 b_std.append(std_loop)
                 idx_min.append(check_first)
                 idx_max.append(check_last)
+                check_first = int(
+                    np.round(overlap * (check_first - check_last) + check_last)
+                )
 
     elif method == "tinti":
+        if mc is None:
+            mc = magnitudes.min()
+            print("no mc given, chose minimum magnitude of the sample")
         for ii in np.arange(
-            offset,
+            0,
             n_eval,
             n_b - max(0, round(n_b * overlap - 1, 1)),
         ):
             loop_mags = magnitudes[ii : ii + n_b + 1]  # noqa
             idx = np.argsort(times[ii : ii + n_b + 1])  # noqa
             loop_mags = loop_mags[idx]
-
-            if mc is None:
-                mc = loop_mags.min()
-                print("no mc given, chose minimum magnitude of the sample")
 
             b_loop, std_loop = estimate_b_tinti(
                 loop_mags, mc=mc, delta_m=delta_m, return_std=True

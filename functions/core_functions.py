@@ -9,7 +9,7 @@ from seismostats.analysis.estimate_beta import (
 )
 
 # local imports
-from functions.general_functions import transform_n, acf_lag_n
+from functions.general_functions import transform_n, acf_lag_n, utsu_test
 
 
 def cut_constant_idx(
@@ -39,7 +39,7 @@ def cut_constant_idx(
             "will lead to cutting off more events than necessary"
         )
 
-    subsamples = np.array_split(series[offset:], idx - offset)
+    subsamples = np.array_split(series, idx)
 
     return idx, subsamples
 
@@ -201,11 +201,13 @@ def b_samples_pos(
     if len(mags_chunks[-1]) < n_b:
         mags_chunks.pop(-1)
         times_chunks.pop(-1)
-        idx = idx[:-1]
+    else:
+        idx = np.concatenate((idx, [len(magnitudes)]))
     if len(mags_chunks[0]) < n_b:
         mags_chunks.pop(0)
         times_chunks.pop(0)
-        idx = idx[:-1]
+    else:
+        idx = np.concatenate(([0], idx))
 
     # estimate b-values
     b_series = np.zeros(len(mags_chunks))
@@ -227,8 +229,9 @@ def b_samples_pos(
             b_series[ii] = np.nan
 
     if return_idx is True:
-        # return the first index of each subsample
-        return b_series, n_bs.astype(int), np.append(0, idx)
+        # idx works sch that mags[idx[i]:idx[i+1]] is the i-th subsample. idx
+        # has therefore n_sample + 1 elements
+        return b_series, n_bs.astype(int), idx
 
     return b_series, n_bs.astype(int)
 
@@ -282,10 +285,12 @@ def b_samples(
     n_b = np.round(len(magnitudes) / n_sample).astype(int)
     if len(mags_chunks[-1]) < n_b:
         mags_chunks.pop(-1)
-        idx = idx[:-1]
+    else:
+        idx = np.concatenate((idx, [len(magnitudes)]))
     if len(mags_chunks[0]) < n_b:
         mags_chunks.pop(0)
-        idx = idx[:-1]
+    else:
+        idx = np.concatenate(([0], idx))
 
     # estimate b-values
     b_series = np.zeros(len(mags_chunks))
@@ -301,8 +306,12 @@ def b_samples(
             b_series[ii] = np.nan
 
     if return_idx is True:
-        # return the first index of each subsample
-        return b_series, n_bs.astype(int), np.append(0, idx)
+        # return the index where the magnitudes where cut- the index is
+        # always the first event of the next subsample.
+        # Example: The first subsample consists of the magnitudes from (offset)
+        # to (idx[0] - 1), and the last subsample consists of the magnitudes
+        # from (idx[-1]) to the end of the magnitudes.
+        return b_series, n_bs.astype(int), idx
 
     return b_series, n_bs.astype(int)
 
@@ -443,7 +452,7 @@ def mean_autocorrelation(
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
     b_method="positive",
-):
+) -> tuple[float, float, float]:
     """estimates the autocorrelation from randomly sampling the magnitudes
 
     Args:
@@ -485,6 +494,111 @@ def mean_autocorrelation(
     )
 
     mean_acf = np.mean(acfs)
+    std_acf = np.std(acfs)
     mean_n_series_used = np.mean(n_series_used)
 
-    return mean_acf, mean_n_series_used
+    return mean_acf, std_acf, mean_n_series_used
+
+
+def utsu_probabilities(
+    magnitudes: np.ndarray,
+    times: np.ndarray[dt.datetime],
+    n_sample: int,
+    mc: None | float = None,
+    delta_m: float = 0.1,
+    nb_min: int = 2,
+    n: int = 1,
+    transform: bool = True,
+    cutting: str = "constant_idx",
+    order: None | np.ndarray = None,
+    b_method="positive",
+):
+    """estimates the p-values that two consecutive values of the b-value
+    series are from the same distribution (low p-value means that the
+    underlying distributions are probably different)
+
+    Args:
+        magnitudes:     array of magnitudes (not the differences!)
+        times:          array of times that correspond to magnitudes
+        n_series:       number of series to cut the data into
+        mc:             completeness magnitude, only needed if b_method is
+                    'tinti'
+        delta_m:        magnitude bin width, assumed to be 0.1 if not given
+        nb_min:         minimum number of events in a series
+        n:              number of random samples
+        transform:      if True, transform b-values such that they are all
+                    comparable regardless of the number of events used
+        cutting:        method of cutting the data into subsamples. either
+                    'random_idx' or 'random'
+        order:          array of values that can be used to sort the
+                    magnitudes, if left as None, it will be assumed that the
+                    desired order is in time.
+        b_method:       method to use for the b-value estimation. either
+                    'positive' or 'tinti'.
+
+    Returns:
+        utsu_p:         array of p-values
+        b-series:       array of b-values
+        idxs:           indices of where the p-values were estimated (the
+                    first idx of the second sample each is used, therefore
+                    exaclty where the change actually happend)
+
+    """
+
+    utsu_p = np.zeros(len(magnitudes))
+    utsu_p[:] = np.nan
+    mean_b = np.zeros(len(magnitudes))
+    if cutting == "constant_idx":
+        # for constant window approach, the sindow has to be shifted exactly
+        # the number of samples per estimate (minus one for no repititions)
+        n = int(len(magnitudes) / n_sample)
+
+    for ii in range(n):
+        if b_method == "positive":
+            b_series, n_bs, idxs = b_samples_pos(
+                magnitudes,
+                times,
+                n_sample,
+                delta_m=delta_m,
+                cutting=cutting,
+                order=order,
+                offset=ii,
+                nb_min=None,
+                return_idx=True,
+            )
+        elif b_method == "tinti":
+            # make sure that order is not none when using cutting method
+            # 'random'
+            if cutting == "random" and order is None:
+                order = times
+            b_series, n_bs, idxs = b_samples(
+                magnitudes,
+                n_sample,
+                mc,
+                delta_m=delta_m,
+                cutting=cutting,
+                order=order,
+                offset=ii,
+                nb_min=None,
+                return_idx=True,
+            )
+
+        mean_b[idxs[1:] - 1] += b_series
+        for idx, b1, b2, n1, n2 in zip(
+            idxs[1:-1], b_series[:-1], b_series[1:], n_bs[:-1], n_bs[1:]
+        ):
+            if (
+                np.isnan(b1)
+                or np.isnan(b2)
+                or np.isinf(b1)
+                or np.isinf(b2)
+                or n1 < nb_min
+                or n2 < nb_min
+            ):
+                utsu_p[idx] = np.nan
+            else:
+                utsu_p[idx] = utsu_test(b1, b2, n1, n2)
+                # here I should apply the welford test so this works also for
+                # the random case
+
+    return utsu_p, mean_b
