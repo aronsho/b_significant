@@ -52,9 +52,16 @@ def finalize_welford(existing_aggregate: tuple) -> [float, float]:
     """
     (count, mean, M2) = existing_aggregate
     if count < 2:
-        # raise warinng
-        warnings.warn("only one value used, therefore variance is not defined")
-        return mean, np.nan
+        if count == 1:
+            # raise warinng
+            warnings.warn(
+                "only one value used, therefore variance is not defined"
+            )
+            return mean, np.nan
+        if count == 0:
+            # raise warinng
+            warnings.warn("no value used, therefore variance is not defined")
+            return np.nan, np.nan
     else:
         (mean, variance) = (
             mean,

@@ -9,7 +9,13 @@ from seismostats.analysis.estimate_beta import (
 )
 
 # local imports
-from functions.general_functions import transform_n, acf_lag_n, utsu_test
+from functions.general_functions import (
+    transform_n,
+    acf_lag_n,
+    utsu_test,
+    update_welford,
+    finalize_welford,
+)
 
 
 def cut_constant_idx(
@@ -547,7 +553,12 @@ def utsu_probabilities(
 
     utsu_p = np.zeros(len(magnitudes))
     utsu_p[:] = np.nan
+    aggregate_utsu_p = np.zeros((len(magnitudes), 3))
+
     mean_b = np.zeros(len(magnitudes))
+    std_b = np.zeros(len(magnitudes))
+    aggregate_b = np.zeros((len(magnitudes), 3))
+
     if cutting == "constant_idx":
         # for constant window approach, the sindow has to be shifted exactly
         # the number of samples per estimate (minus one for no repititions)
@@ -583,7 +594,12 @@ def utsu_probabilities(
                 return_idx=True,
             )
 
-        mean_b[idxs[1:] - 1] += b_series
+        for idx, b, n_b in zip(idxs[1:], b_series, n_bs[1:]):
+            if np.isnan(b) or np.isinf(b) or n_b < nb_min:
+                pass
+            else:
+                aggregate_b[idx - 1] = update_welford(aggregate_b[idx - 1], b)
+
         for idx, b1, b2, n1, n2 in zip(
             idxs[1:-1], b_series[:-1], b_series[1:], n_bs[:-1], n_bs[1:]
         ):
@@ -595,10 +611,16 @@ def utsu_probabilities(
                 or n1 < nb_min
                 or n2 < nb_min
             ):
-                utsu_p[idx] = np.nan
+                pass
             else:
-                utsu_p[idx] = utsu_test(b1, b2, n1, n2)
-                # here I should apply the welford test so this works also for
-                # the random case
+                aggregate_utsu_p[idx - 1] = update_welford(
+                    aggregate_utsu_p[idx - 1], utsu_test(b1, b2, n1, n2)
+                )
+                aggregate_b[idx - 1] = update_welford(aggregate_b[idx - 1], b1)
 
-    return utsu_p, mean_b
+    for ii in range(len(magnitudes)):
+        utsu_p[ii], _ = finalize_welford(aggregate_utsu_p[ii])
+        mean_b[ii], std_b[ii] = finalize_welford(aggregate_b[ii])
+    std_b = np.sqrt(std_b)
+
+    return utsu_p, mean_b, std_b
