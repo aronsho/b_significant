@@ -2,6 +2,7 @@
 import numpy as np
 import datetime as dt
 import random
+from scipy.stats import norm
 import warnings
 from seismostats.analysis.estimate_beta import (
     estimate_b_positive,
@@ -239,7 +240,7 @@ def b_samples_pos(
         # has therefore n_sample + 1 elements
         return b_series, n_bs.astype(int), idx
 
-    return b_series, n_bs.astype(int)
+    return b_series, n_bs.astygit pe(int)
 
 
 def b_samples(
@@ -624,3 +625,45 @@ def utsu_probabilities(
     std_b = np.sqrt(std_b)
 
     return utsu_p, mean_b, std_b
+
+
+def pval_mac(
+    mac: np.ndarray, n_series: np.ndarray, cutting="constant_idx"
+) -> np.ndarray:
+    """estimate the p-value of the hyptothesis that the b-value is constant. A
+    small p-value indicates that the mean autocorrelation is significantly
+    larger than expected by chance, therefore disvalidating the null-hyptothesis.
+
+    Args:
+        mac:        mean autocorrelation
+        n_series:   number of series used for the mean autocorrelation
+        cutting:    method of cutting the data into subsamples. either
+                'random_idx' or 'constant_idx' or 'random'
+
+    Returns:
+        p:          p-value of the hypothesis that the b-value is constant
+    """
+
+    if cutting == "constant_idx":
+        gamma = 1
+    elif cutting == "random_idx":
+        warnings.warn(
+            "random cutting is not implemented yet, using constant_idx instead"
+        )
+        gamma = 1
+    elif cutting == "random":
+        warnings.warn(
+            "random cutting is not implemented yet, using constant_idx instead"
+        )
+        gamma = 1
+    else:
+        raise ValueError(
+            "cutting method not recognized, use either 'random_idx' or "
+            "'constant_idx' or 'random' for the cutting variable"
+        )
+    mu = -1 / n_series
+    sigma = gamma * (n_series - 2) / (n_series * np.sqrt(n_series - 1))
+    print("check")
+    p = 1 - norm(loc=mu, scale=sigma).cdf(mac)
+
+    return p

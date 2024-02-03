@@ -1,5 +1,7 @@
 # imports
 import numpy as np
+import rft1d
+
 from seismostats import simulate_magnitudes, bin_to_precision
 from seismostats.analysis.estimate_beta import (
     estimate_b_positive,
@@ -144,19 +146,19 @@ def simulated_magnitudes_binned(
     return mags
 
 
-def simulate_step(
-    n: int,
+def simulate_rectangular(
+    n_total: int,
     n_deviation: int,
     b: float,
     delta_b: float,
     mc: float,
     delta_m: float = 0.01,
-):
+) -> tuple[np.ndarray, np.ndarray]:
     """Simulate binned magnitudes with a step of length N_deviation in the
     b-value
 
     Args:
-        n:              total number of magnitudes to simulate
+        n_total:        total number of magnitudes to simulate
         n_deviation:    number of magnitudes with deviating b-value
         b:              b-value of the background
         delta_b:        deviation of b-value
@@ -164,18 +166,119 @@ def simulate_step(
         delta_m:        magnitude bin width
 
     Returns:
-        magnitudes:   array of magnitudes
-        b_true: array of b-values from which each magnitude was simulated
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
 
     """
-    n_loop1 = int((n - n_deviation) / 2)
+    n_loop1 = int((n_total - n_deviation) / 2)
 
-    b_true = np.ones(n) * b
+    b_true = np.ones(n_total) * b
     b_true[n_loop1 : n_loop1 + n_deviation] = b + delta_b  # noqa
 
-    magnitudes = simulated_magnitudes_binned(n, b_true, mc, delta_m)
-
+    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
     return magnitudes, b_true
+
+
+def simulate_step(
+    n_total: int,
+    b: float,
+    delta_b: float,
+    mc: float,
+    delta_m: float = 0.01,
+    idx_step: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes with a step at idx in the b-value
+
+    Args:
+        n_total:              total number of magnitudes to simulate
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+        idx_step:       index of the magnitude where the step occurs. if None,
+                    the step occurs at the middle of the sequence
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+
+    b_true = np.ones(n_total) * b
+    b_true[idx_step:] = b + delta_b
+
+    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
+    return magnitudes, b_true
+
+
+def simulate_sinus(
+    n_total: int,
+    n_wavelength: int,
+    b: float,
+    delta_b: float,
+    mc: float,
+    delta_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes with an underlying sinusoidal b-value
+    distribution
+
+    Args:
+        n_total:              total number of magnitudes to simulate
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+        idx_step:       index of the magnitude where the step occurs. if None,
+                    the step occurs at the middle of the sequence
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+    b_true = (
+        b
+        + np.sin(np.arange(n_total) / (n_wavelength - 1) * 2 * np.pi) * delta_b
+    )
+
+    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
+    return magnitudes, b_true
+
+
+def simulate_randomfield(
+    n_total: int,
+    kernel_width: float,
+    b: float,
+    b_std: float,
+    mc: float,
+    delta_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes where the underlying b-values vary with time
+    as a random gaussian process
+
+    Args:
+        n_total:              total number of magnitudes to simulate
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+        idx_step:       index of the magnitude where the step occurs. if None,
+                    the step occurs at the middle of the sequence
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+    magnitudes = np.zeros(n_total)
+    kernel_width
+    b_s = abs(b_mean + rft1d.random.randn1d(1, n_total, kernel_width) * b_std)
+
+    for ii in range(n_total):
+        magnitudes[ii] = simulate_magnitudes(
+            1, b_s[ii] * np.log(10), mc=mc - delta_m / 2
+        ).item()
+    return bin_to_precision(magnitudes, delta_m), b_s
 
 
 def utsu_test(b1: float, b2: float, n1: int, n2: int):
