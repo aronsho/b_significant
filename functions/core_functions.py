@@ -417,7 +417,8 @@ def autocorrelation(
                 # later as more efficient computationally.
             )
         # transform b-value
-        b_series = transform_n(b_series, b_all, n_bs, np.max(n_bs))
+        if transform is True:
+            b_series = transform_n(b_series, b_all, n_bs, np.max(n_bs))
 
         # filter out nan and inf from b-values
         idx_nan = np.isnan(b_series)
