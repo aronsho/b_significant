@@ -240,7 +240,7 @@ def b_samples_pos(
         # has therefore n_sample + 1 elements
         return b_series, n_bs.astype(int), idx
 
-    return b_series, n_bs.astygit pe(int)
+    return b_series, n_bs.astype(int)
 
 
 def b_samples(
@@ -335,7 +335,7 @@ def autocorrelation(
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
     b_method="positive",
-):
+) -> tuple[np.ndarray, np.ndarray]:
     """estimates the autocorrelation from subsampling the magnitudes into
     n_sample pieces, according to the method given in cutting. This process
     will be done n=1 times as default, but can be increased as wished.
@@ -417,11 +417,7 @@ def autocorrelation(
                 # later as more efficient computationally.
             )
         # transform b-value
-        if transform is True:
-            for jj in range(len(b_series)):
-                b_series[jj] = transform_n(
-                    b_series[jj], b_all, n_bs[jj], np.max(n_bs)
-                )
+        b_series = transform_n(b_series, b_all, n_bs, np.max(n_bs))
 
         # filter out nan and inf from b-values
         idx_nan = np.isnan(b_series)
@@ -519,7 +515,7 @@ def utsu_probabilities(
     cutting: str = "constant_idx",
     order: None | np.ndarray = None,
     b_method="positive",
-):
+) -> tuple[np.ndarray, np.ndarray]:
     """estimates the p-values that two consecutive values of the b-value
     series are from the same distribution (low p-value means that the
     underlying distributions are probably different)
@@ -663,7 +659,6 @@ def pval_mac(
         )
     mu = -1 / n_series
     sigma = gamma * (n_series - 2) / (n_series * np.sqrt(n_series - 1))
-    print("check")
     p = 1 - norm(loc=mu, scale=sigma).cdf(mac)
 
     return p

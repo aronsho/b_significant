@@ -18,7 +18,7 @@ t = time_module.time()
 # fixed parameters
 # ---------------------------------------------- #
 
-n = 2  # number of times the magnitudesa are simulated to get the statistics
+n = 500  # number of times the magnitudesa are simulated to get the statistics
 
 mc = 0
 delta_m = 0.1
@@ -69,7 +69,7 @@ for ii in range(n):
     times = np.random.rand(len(mags)) * 1000
     times = np.sort(times)
 
-    acfs, n_series_used = mean_autocorrelation(
+    acfs, std_acf, n_series_used = mean_autocorrelation(
         mags,
         times,
         n_sample,
@@ -92,13 +92,12 @@ n_used_mean = np.array(n_used_mean)
 p_val = pval_mac(acf_mean, n_used_mean, cutting)
 p_val = np.array(p_val)
 
-
 # -----------------------------------------------#
 # save acfs
 # -----------------------------------------------#
 
 save_str = (
-    "results/resolution" + str(cutting) + "/p_val" + str(cl_idx) + ".csv"
+    "results/resolution/" + str(cutting) + "/p_val" + str(cl_idx) + ".csv"
 )
 
 np.savetxt(save_str, acf_mean, delimiter=",")

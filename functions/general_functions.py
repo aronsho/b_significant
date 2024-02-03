@@ -72,7 +72,9 @@ def finalize_welford(existing_aggregate: tuple) -> [float, float]:
         return mean, variance
 
 
-def transform_n(x: float, b: float, n1: int, n2: int):
+def transform_n(
+    x: np.ndarray, b: float, n1: np.ndarray, n2: np.ndarray
+) -> np.ndarray:
     """transform b-value to be comparable to other b-values
 
     Args:
@@ -88,7 +90,7 @@ def transform_n(x: float, b: float, n1: int, n2: int):
     return x_transformed
 
 
-def acf_lag_n(series: np.ndarray, lag: int = 1):
+def acf_lag_n(series: np.ndarray, lag: int = 1) -> float:
     """calculates the autocorrelation function of a series for a given lag
     Args:
         b_series (np.array): array of b-values
@@ -272,7 +274,7 @@ def simulate_randomfield(
     """
     magnitudes = np.zeros(n_total)
     kernel_width
-    b_s = abs(b_mean + rft1d.random.randn1d(1, n_total, kernel_width) * b_std)
+    b_s = abs(b + rft1d.random.randn1d(1, n_total, kernel_width) * b_std)
 
     for ii in range(n_total):
         magnitudes[ii] = simulate_magnitudes(
@@ -281,10 +283,12 @@ def simulate_randomfield(
     return bin_to_precision(magnitudes, delta_m), b_s
 
 
-def utsu_test(b1: float, b2: float, n1: int, n2: int):
+def utsu_test(
+    b1: np.ndarray, b2: np.ndarray, n1: np.ndarray[int], n2: np.ndarray
+) -> np.ndarray:
     """Given two b-value estimates from two magnitude samples, this functions
     gives back the probability that the actual underlying b-values are not
-    different. A small p-value means that the b-values are
+    different. All the input arrays have to have the same length.
 
     Source: TODO Need to verify that this is used in Utsu 1992 !!!
 
