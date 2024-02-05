@@ -206,6 +206,9 @@ def simulate_step(
 
     """
 
+    if idx_step is None:
+        idx_step = int(n_total / 2)
+
     b_true = np.ones(n_total) * b
     b_true[idx_step:] = b + delta_b
 
@@ -225,13 +228,12 @@ def simulate_sinus(
     distribution
 
     Args:
-        n_total:              total number of magnitudes to simulate
+        n_total:        total number of magnitudes to simulate
+        n_wavelength:   wavelength of the sinusoidal
         b:              b-value of the background
         delta_b:        deviation of b-value
         mc:             completeness magnitude
         delta_m:        magnitude bin width
-        idx_step:       index of the magnitude where the step occurs. if None,
-                    the step occurs at the middle of the sequence
 
     Returns:
         magnitudes: array of magnitudes
@@ -242,6 +244,34 @@ def simulate_sinus(
         b
         + np.sin(np.arange(n_total) / (n_wavelength - 1) * 2 * np.pi) * delta_b
     )
+
+    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
+    return magnitudes, b_true
+
+
+def simulate_ramp(
+    n_total: int,
+    b: float,
+    delta_b: float,
+    mc: float,
+    delta_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes with an underlying b-value that rises
+    constantly
+
+    Args:
+        n_total:              total number of magnitudes to simulate
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+    b_true = b + np.arange(n_total) / n_total * delta_b
 
     magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
     return magnitudes, b_true
