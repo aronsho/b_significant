@@ -10,21 +10,36 @@ def MAC_different_n(
     time: np.ndarray,
     mc: float,
     delta_m: float,
-    n_series_list: list[int],
+    n_series_list: list[int] | None = None,
+    n_bs: list[int] | None = None,
     cutting: str = "random_idx",
     transform: bool = True,
     b_method: str = "positive",
     plotting: bool = True,
     ax: None | plt.Axes = None,
 ) -> tuple[float, float, float]:
+    # just in case the mc was not filtered out
     idx = mags > mc
+    mags = mags[idx]
+    time = time[idx]
+    n = len(mags)
+
+    # estimtate the mean autocorrelation for different number of series
+    if n_series_list is None:
+        if n_bs is None:
+            raise ValueError("n_series_list or n_bs must be given")
+        else:
+            n_series_list = np.round(n / n_bs).astype(int)
+            n_series_list = np.unique(n_series_list)
+            n_series_list = n_series_list[n_series_list >= 20]
+
     acf_mean = np.zeros(len(n_series_list))
     acf_std = np.zeros(len(n_series_list))
     n_series_used = np.zeros(len(n_series_list))
     for ii, n_sample in enumerate(n_series_list):
         acf_mean[ii], acf_std[ii], n_series_used[ii] = mean_autocorrelation(
-            mags[idx],
-            time[idx],
+            mags,
+            time,
             n_sample=n_sample,
             mc=mc,
             delta_m=delta_m,
@@ -33,6 +48,53 @@ def MAC_different_n(
             cutting=cutting,
             b_method=b_method,
         )
+
+    # plot the mean autocorrelation
+    if plotting:
+        if ax is None:
+            ax = plt.subplots(figsize=(10, 6))[1]
+
+        # Plot 0.05 threshold
+        x = np.arange(min(n_series_list), max(n_series_list) + 1, 0.1)
+        mu, sigma = mu_sigma_mac(x, cutting)
+        ax.plot(
+            n / x,
+            1.96 * sigma - 1 / x,
+            color="grey",
+            linestyle="--",
+            alpha=0.5,
+        )
+        ax.plot(
+            n / x,
+            -1.96 * sigma - 1 / x,
+            color="grey",
+            linestyle="--",
+            alpha=0.5,
+        )
+        ax.plot(n / x, mu, color="grey", linestyle="-")
+        ax.fill_between(
+            n / x,
+            1.96 * sigma - 1 / x,
+            -1.96 * sigma - 1 / x,
+            color="orange",
+            alpha=0.1,
+            label="95% confidence interval",
+        )
+
+        plt.errorbar(
+            n / n_series_list,
+            acf_mean,
+            yerr=1.96 * acf_std,
+            marker="o",
+            markersize=2,
+            color="blue",
+            linestyle="none",
+            ecolor="lightblue",
+            label="Data",
+        )
+        plt.xlabel("Number of series used")
+        plt.ylabel("Mean autocorrelation")
+        plt.legend(loc="lower left")
 
     return acf_mean, acf_std, n_series_used
 
