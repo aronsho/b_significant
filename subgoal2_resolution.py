@@ -1,7 +1,7 @@
 # Lets test what the constant_idx method can resolve
 
 import numpy as np
-from functions.core_functions import mean_autocorrelation, pval_mac
+from functions.core_functions import mean_autocorrelation
 from functions.general_functions import simulate_step
 import itertools as it
 import time as time_module
@@ -84,21 +84,17 @@ for ii in range(n):
 acf_mean = np.array(acf_mean)
 n_used_mean = np.array(n_used_mean)
 
-# -----------------------------------------------#
-# find the significance level for the acf
-# -----------------------------------------------#
-
-p_val = pval_mac(acf_mean, n_used_mean, cutting)
-p_val = np.array(p_val)
 
 # -----------------------------------------------#
 # save acfs
 # -----------------------------------------------#
 
 save_str = (
-    "results/resolution/" + str(cutting) + "/p_val" + str(cl_idx) + ".csv"
+    "results/resolution/" + str(cutting) + "/acf_mean" + str(cl_idx) + ".csv"
 )
-
-np.savetxt(save_str, p_val, delimiter=",")
+np.savetxt(save_str, acf_mean, delimiter=",")
+np.savetxt(
+    save_str.replace("acf_mean", "n_used_mean"), n_used_mean, delimiter=","
+)
 
 print("time = ", time_module.time() - t)
