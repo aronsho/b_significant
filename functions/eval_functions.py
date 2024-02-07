@@ -161,17 +161,11 @@ def zval_mac(
 def gamma_factor(cutting):
     """return the gamma factor for the given cutting method"""
     if cutting == "constant_idx":
-        gamma = 0.8088658668341759
+        gamma = 0.8088658668341759  # n_sample_min = 25
     elif cutting == "random_idx":
-        warnings.warn(
-            "random cutting is not implemented yet, using constant_idx instead"
-        )
-        gamma = 1
+        gamma = 0.4554834807310068  # n_sample_min = 50
     elif cutting == "random":
-        warnings.warn(
-            "random cutting is not implemented yet, using constant_idx instead"
-        )
-        gamma = 1
+        gamma = 0.44930660582990684  # n_sample_min = 50
     else:
         raise ValueError(
             "cutting method not recognized, use either 'random_idx' or "

@@ -10,7 +10,7 @@ import os
 # ---------------------------------------------- #
 # running index for parallelization
 # ---------------------------------------------- #
-cl_idx = int(os.getenv("SLURM_ARRAY_TASK_ID"))
+cl_idx = 0  # int(os.getenv("SLURM_ARRAY_TASK_ID"))
 print("running index:", cl_idx, "type", type(cl_idx))
 t = time_module.time()
 
@@ -37,8 +37,23 @@ n_series = 100
 # varying parameters
 # ---------------------------------------------- #
 
-n_totals = [1000, 5000, 10000, 15000, 20000, 25000, 30000, 35000]
-delta_bs = np.arange(0, 1.1, 0.1)
+n_totals = [
+    1000,
+    2000,
+    3000,
+    4000,
+    5000,
+    7000,
+    10000,
+    15000,
+    20000,
+    25000,
+    30000,
+    35000,
+    40000,
+    50000,
+]
+delta_bs = np.arange(0, 1.025, 0.025)
 
 all_permutations = [
     i
