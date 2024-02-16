@@ -1,7 +1,7 @@
 # Lets test what the constant_idx method can resolve
 
 import numpy as np
-from functions.core_functions import mean_autocorrelation, pval_mac
+from functions.core_functions import mean_autocorrelation
 from functions.general_functions import simulate_randomfield
 import itertools as it
 import time as time_module
@@ -10,7 +10,7 @@ import os
 # ---------------------------------------------- #
 # running index for parallelization
 # ---------------------------------------------- #
-cl_idx = 0  # int(os.getenv("SLURM_ARRAY_TASK_ID"))
+cl_idx = int(os.getenv("SLURM_ARRAY_TASK_ID"))
 print("running index:", cl_idx, "type", type(cl_idx))
 t = time_module.time()
 
