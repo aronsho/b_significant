@@ -38,7 +38,7 @@ anomaly_func = "gaussian"
 # ---------------------------------------------- #
 
 delta_bs = np.arange(0.05, 0.25, 0.05)
-n_series = np.arange(20, 1500, 10)
+n_series = np.arange(20, 1500, 20)
 length_scales = np.arange(100, 2000, 100)
 
 
