@@ -17,6 +17,7 @@ def MAC_different_n(
     b_method: str = "positive",
     plotting: bool = True,
     ax: None | plt.Axes = None,
+    parameter: str | None = None,
 ) -> tuple[float, float, float]:
     # just in case the mc was not filtered out
     idx = mags > mc
@@ -30,7 +31,7 @@ def MAC_different_n(
             raise ValueError("n_series_list or n_bs must be given")
         else:
             n_series_list = np.round(n / n_bs).astype(int)
-            n_series_list = np.unique(n_series_list)
+            n_series_list_s, _ = np.unique(n_series_list, return_index=True)
             n_series_list = n_series_list[n_series_list >= 20]
 
     acf_mean = np.zeros(len(n_series_list))
@@ -92,9 +93,13 @@ def MAC_different_n(
             ecolor="lightblue",
             label="Data",
         )
-        plt.xlabel("Number of series used")
+        plt.xlabel("Number of magnitudes per estimate")
         plt.ylabel("Mean autocorrelation")
         plt.legend(loc="lower left")
+
+    if parameter == "z_value":
+        z_val = zval_mac(acf_mean, n_series_list, cutting)
+        return z_val, acf_std, n_series_used
 
     return acf_mean, acf_std, n_series_used
 
@@ -137,7 +142,6 @@ def zval_mac(
     mac: np.ndarray,
     n_series: np.ndarray,
     cutting="constant_idx",
-    return_z=False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """estimate the z-value of the hyptothesis that the b-value is constant. A
     small p-value indicates that the mean autocorrelation is significantly

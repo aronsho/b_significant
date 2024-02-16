@@ -2,7 +2,7 @@
 
 import numpy as np
 from functions.core_functions import mean_autocorrelation, pval_mac
-from functions.general_functions import simulate_rectangular
+from functions.general_functions import simulate_randomfield
 import itertools as it
 import time as time_module
 import os
@@ -18,36 +18,36 @@ t = time_module.time()
 # fixed parameters
 # ---------------------------------------------- #
 
-n = 2  # number of times the magnitudesa are simulated to get the statistics
+n = 50  # number of times the magnitudesa are simulated to get the statistics
 
 mc = 0
 delta_m = 0.1
 
 b = 1
-n_bs = 200
 
 b_parameter = "b_value"
 
 cutting = "constant_idx"
 transform = False
 
-n_total = 10000
-anomaly_func = "step"  # "sinus", "gaussian"
+n_total = 40000
+anomaly_func = "gaussian"
 
 # ---------------------------------------------- #
 # varying parameters
 # ---------------------------------------------- #
 
-delta_bs = np.arange(0.3, 1.1, 0.1)
-n_series = np.arange(50, 1000, 50)
-n_anomals = np.arange(100, 500, 100)
+delta_bs = np.arange(0.05, 0.25, 0.05)
+n_series = np.arange(20, 1500, 10)
+length_scales = np.arange(100, 2000, 100)
+
 
 all_permutations = [
     i
     for i in it.product(
         delta_bs,
         n_series,
-        n_anomals,
+        length_scales,
     )
 ]
 all_permutations = np.array(all_permutations)
@@ -55,7 +55,7 @@ all_permutations = np.array(all_permutations)
 # parameter vectors to run through with cl_idx
 cl_delta_bs = all_permutations[:, 0]
 cl_n_series = all_permutations[:, 1].astype(int)
-cl_n_anomals = all_permutations[:, 2].astype(int)
+cl_length_scales = all_permutations[:, 2].astype(int)
 
 # -----------------------------------------------#
 # simulate magnitudes and calculate acf
@@ -65,8 +65,8 @@ acf_mean = []
 n_used_mean = []
 
 for ii in range(n):
-    mags, _ = simulate_rectangular(
-        n_total, cl_n_anomals[cl_idx], b, cl_delta_bs[cl_idx], mc, delta_m
+    mags, _ = simulate_randomfield(
+        n_total, cl_length_scales[cl_idx], b, cl_delta_bs[cl_idx], mc, delta_m
     )
 
     times = np.random.rand(len(mags)) * 1000
@@ -89,20 +89,15 @@ acf_mean = np.array(acf_mean)
 n_used_mean = np.array(n_used_mean)
 
 # -----------------------------------------------#
-# find the significance level for the acf
-# -----------------------------------------------#
-
-p_val = pval_mac(acf_mean, n_used_mean, cutting)
-p_val = np.array(p_val)
-
-# -----------------------------------------------#
 # save acfs
 # -----------------------------------------------#
 
 save_str = (
-    "results/resolution/" + str(cutting) + "/p_val" + str(cl_idx) + ".csv"
+    "results/length_scale/" + str(cutting) + "/acf_mean" + str(cl_idx) + ".csv"
 )
-
-# np.savetxt(save_str, p_val, delimiter=",")
+np.savetxt(save_str, acf_mean, delimiter=",")
+np.savetxt(
+    save_str.replace("acf_mean", "n_used_mean"), n_used_mean, delimiter=","
+)
 
 print("time = ", time_module.time() - t)

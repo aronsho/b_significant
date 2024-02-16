@@ -350,7 +350,7 @@ def b_any_series(
     mc: float = None,
     return_std: bool = False,
     overlap: float = 0,
-    return_time_bar: bool = True,
+    return_bar: bool = False,
     method: str = "tinti",
 ):
     """estimates the b-value using a constant number of events (n_times).
@@ -366,7 +366,7 @@ def b_any_series(
         return_std:         if True, return the standard deviation of the
                         b-value
         overlap:            fraction of overlap between the time windows
-        return_time_bar:    if True, return the time window lengths
+        return_bar:     if True, return the time window lengths
         method:             method to use for the b-value estimation.
 
     Returns:
@@ -420,7 +420,7 @@ def b_any_series(
         for ii in np.arange(
             0,
             n_eval,
-            n_b - max(0, round(n_b * overlap - 1, 1)),
+            n_b - max(0, round(n_b * overlap - 1, 1).astype(int)),
         ):
             loop_mags = magnitudes[ii : ii + n_b + 1]  # noqa
             idx = np.argsort(times[ii : ii + n_b + 1])  # noqa
@@ -437,10 +437,15 @@ def b_any_series(
 
     b_any = np.array(b_any)
     b_std = np.array(b_std)
+    idx_min = np.array(idx_min)
+    idx_max = np.array(idx_max)
+
+    if return_bar is True:
+        out = (b_any, [idx_min, idx_max])
+    else:
+        out = (b_any, idx_max)
 
     if return_std is True:
-        return b_any, idx_max, b_std
-    elif return_time_bar is True:
-        return b_any, idx_max
-    else:
-        return b_any
+        out = out + (b_std,)
+
+    return out
