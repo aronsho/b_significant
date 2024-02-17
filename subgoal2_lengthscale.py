@@ -11,7 +11,7 @@ import os
 # ---------------------------------------------- #
 # running index for parallelization
 # ---------------------------------------------- #
-cl_idx = 0  # int(os.getenv("SLURM_ARRAY_TASK_ID"))
+cl_idx = int(os.getenv("SLURM_ARRAY_TASK_ID"))
 print("running index:", cl_idx, "type", type(cl_idx))
 t = time_module.time()
 
