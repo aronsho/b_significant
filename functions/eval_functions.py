@@ -5,7 +5,7 @@ from functions.core_functions import mean_autocorrelation
 import warnings
 
 
-def MAC_different_n(
+def mac_different_n(
     mags: np.ndarray,
     time: np.ndarray,
     mc: float,

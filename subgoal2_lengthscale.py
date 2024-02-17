@@ -3,6 +3,7 @@
 import numpy as np
 from functions.core_functions import mean_autocorrelation
 from functions.general_functions import simulate_randomfield, b_any_series
+from functions.eval_functions import mac_different_n
 import itertools as it
 import time as time_module
 import os
@@ -17,9 +18,6 @@ t = time_module.time()
 # ---------------------------------------------- #
 # fixed parameters
 # ---------------------------------------------- #
-
-n = 50  # number of times the magnitudesa are simulated to get the statistics
-
 mc = 0
 delta_m = 0.1
 
@@ -33,20 +31,21 @@ transform = False
 n_total = 40000
 anomaly_func = "gaussian"
 
+n_bs = np.arange(20, 1500, 10)
+
 # ---------------------------------------------- #
 # varying parameters
 # ---------------------------------------------- #
 
 delta_bs = np.arange(0.05, 0.3, 0.1)
-n_bs = np.arange(20, 1500, 10)
 length_scales = np.arange(100, 2000, 150)
-
+sim_numbers = np.arange(0, 50, 1)
 
 all_permutations = [
     i
     for i in it.product(
         delta_bs,
-        n_bs,
+        sim_numbers,
         length_scales,
     )
 ]
@@ -54,48 +53,43 @@ all_permutations = np.array(all_permutations)
 
 # parameter vectors to run through with cl_idx
 cl_delta_bs = all_permutations[:, 0]
-cl_n_bs = all_permutations[:, 1].astype(int)
+cl_sim_numbers = all_permutations[:, 1].astype(int)
 cl_length_scales = all_permutations[:, 2].astype(int)
 
 # -----------------------------------------------#
 # simulate magnitudes and calculate acf
 # -----------------------------------------------#
 
-n_series = n_total / cl_n_bs[cl_idx]
+n_series_list = n_total / n_bs
 
-acf_mean = []
-n_used_mean = []
+mags, b_true = simulate_randomfield(
+    n_total, cl_length_scales[cl_idx], b, cl_delta_bs[cl_idx], mc, delta_m
+)
+
+times = np.arange(len(mags))
+
+# acf
+acfs, acf_std, n_bs, n_series_used = mac_different_n(
+    mags,
+    np.arange(len(mags)),
+    mc,
+    delta_m,
+    n_bs=n_bs,
+    cutting="constant_idx",
+    transform=False,
+    b_method="tinti",
+    plotting=False,
+)
+
 diff_one = []
 diff_nb = []
 
-for ii in range(n):
-    mags, b_true = simulate_randomfield(
-        n_total, cl_length_scales[cl_idx], b, cl_delta_bs[cl_idx], mc, delta_m
-    )
-
-    times = np.random.rand(len(mags)) * 1000
-    times = np.sort(times)
-
-    # acf
-    acfs, std_acf, n_series_used = mean_autocorrelation(
-        mags,
-        times,
-        n_series,
-        mc=mc,
-        delta_m=delta_m,
-        n=500,
-        transform=transform,
-        cutting=cutting,
-        b_method="tinti",
-    )
-    acf_mean.append(np.mean(acfs))
-    n_used_mean.append(np.mean(n_series_used))
-
+for n_b in n_bs:
     # measure how well the signal is reconstructed with the different n_bs
     b_time, idx_max, b_std = b_any_series(
         mags,
         times,
-        n_b=cl_n_bs[cl_idx],
+        n_b=n_b,
         mc=mc,
         delta_m=delta_m,
         return_std=True,
@@ -112,10 +106,8 @@ for ii in range(n):
     diff_one.append(sum(diff) / len(diff))
 
     # 2. difference of the b-value estimate to the mean true b-value of the next n_b time steps
-    b_expected = np.convolve(
-        b_true, np.ones(cl_n_bs[cl_idx]) / cl_n_bs[cl_idx], mode="valid"
-    )
-    idx_del = idx_max < (len(b_true) - cl_n_bs[cl_idx])
+    b_expected = np.convolve(b_true, np.ones(n_b) / n_b, mode="valid")
+    idx_del = idx_max < (len(b_true) - n_b)
     idx_max_nb = idx_max[idx_del]
     diff = (
         abs(
@@ -125,8 +117,6 @@ for ii in range(n):
     )
     diff_nb.append(sum(diff) / len(diff))
 
-acf_mean = np.array(acf_mean)
-n_used_mean = np.array(n_used_mean)
 diff_one = np.array(diff_one)
 diff_nb = np.array(diff_nb)
 
@@ -135,13 +125,13 @@ diff_nb = np.array(diff_nb)
 # -----------------------------------------------#
 
 save_str = (
-    "results/length_scale/" + str(cutting) + "/acf_mean" + str(cl_idx) + ".csv"
+    "results/length_scale/" + str(cutting) + "/acfs" + str(cl_idx) + ".csv"
 )
-np.savetxt(save_str, acf_mean, delimiter=",")
+np.savetxt(save_str, acfs, delimiter=",")
 np.savetxt(
-    save_str.replace("acf_mean", "n_used_mean"), n_used_mean, delimiter=","
+    save_str.replace("acfs", "n_series_used"), n_series_used, delimiter=","
 )
-np.savetxt(save_str.replace("acf_mean", "diff_one"), diff_one, delimiter=",")
-np.savetxt(save_str.replace("acf_mean", "diff_nb"), diff_nb, delimiter=",")
+np.savetxt(save_str.replace("acfs", "diff_one"), diff_one, delimiter=",")
+np.savetxt(save_str.replace("acfs", "diff_nb"), diff_nb, delimiter=",")
 
 print("time = ", time_module.time() - t)
