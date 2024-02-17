@@ -420,7 +420,7 @@ def b_any_series(
         for ii in np.arange(
             0,
             n_eval,
-            n_b - max(0, round(n_b * overlap - 1, 1).astype(int)),
+            n_b - int(max(0, round(n_b * overlap - 1, 1))),
         ):
             loop_mags = magnitudes[ii : ii + n_b + 1]  # noqa
             idx = np.argsort(times[ii : ii + n_b + 1])  # noqa

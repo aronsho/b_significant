@@ -20,7 +20,7 @@ def MAC_different_n(
     parameter: str | None = None,
 ) -> tuple[float, float, float]:
     # just in case the mc was not filtered out
-    idx = mags > mc
+    idx = mags >= mc
     mags = mags[idx]
     time = time[idx]
     n = len(mags)
@@ -30,9 +30,15 @@ def MAC_different_n(
         if n_bs is None:
             raise ValueError("n_series_list or n_bs must be given")
         else:
-            n_series_list = np.round(n / n_bs).astype(int)
-            n_series_list_s, _ = np.unique(n_series_list, return_index=True)
-            n_series_list = n_series_list[n_series_list >= 20]
+            if cutting == "constant_idx":
+                n_series_list = n / n_bs
+                n_series_list = n_series_list[n_series_list >= 20]
+            else:
+                n_series_list = np.round(n / n_bs).astype(int)
+                _, idx = np.unique(n_series_list, return_index=True)
+                n_series_list = n_series_list[idx]
+                n_series_list = n_series_list[n_series_list >= 20]
+                n_bs = n / n_series_list
 
     acf_mean = np.zeros(len(n_series_list))
     acf_std = np.zeros(len(n_series_list))
@@ -83,7 +89,7 @@ def MAC_different_n(
         )
 
         plt.errorbar(
-            n / n_series_list,
+            n_bs,
             acf_mean,
             yerr=1.96 * acf_std,
             marker="o",
@@ -101,7 +107,10 @@ def MAC_different_n(
         z_val = zval_mac(acf_mean, n_series_list, cutting)
         return z_val, acf_std, n_series_used
 
-    return acf_mean, acf_std, n_series_used
+    if n_bs is None:
+        return acf_mean, acf_std, n_series_list, n_series_used
+    else:
+        return acf_mean, acf_std, n_bs, n_series_used
 
 
 def mu_sigma_mac(
