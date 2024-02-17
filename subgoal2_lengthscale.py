@@ -11,7 +11,7 @@ import os
 # ---------------------------------------------- #
 # running index for parallelization
 # ---------------------------------------------- #
-cl_idx = int(os.getenv("SLURM_ARRAY_TASK_ID"))
+cl_idx = 0  # int(os.getenv("SLURM_ARRAY_TASK_ID"))
 print("running index:", cl_idx, "type", type(cl_idx))
 t = time_module.time()
 
@@ -133,5 +133,6 @@ np.savetxt(
 )
 np.savetxt(save_str.replace("acfs", "diff_one"), diff_one, delimiter=",")
 np.savetxt(save_str.replace("acfs", "diff_nb"), diff_nb, delimiter=",")
+np.savetxt(save_str.replace("acfs", "n_bs"), n_bs, delimiter=",")
 
 print("time = ", time_module.time() - t)
