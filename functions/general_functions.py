@@ -38,7 +38,7 @@ def update_welford(existing_aggregate: tuple, new_value: float) -> tuple:
     return (count, mean, M2)
 
 
-def finalize_welford(existing_aggregate: tuple) -> [float, float]:
+def finalize_welford(existing_aggregate: tuple) -> tuple[float, float]:
     """Retrieve the mean, variance and sample variance from an aggregate
 
     Args:

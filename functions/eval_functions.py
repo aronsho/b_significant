@@ -2,7 +2,6 @@ import numpy as np
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 from functions.core_functions import mean_autocorrelation
-import warnings
 
 
 def mac_different_n(
@@ -23,7 +22,7 @@ def mac_different_n(
     idx = mags >= mc
     mags = mags[idx]
     time = time[idx]
-    n = len(mags)
+    n_total = len(mags)
 
     # estimtate the mean autocorrelation for different number of series
     if n_series_list is None:
@@ -31,14 +30,16 @@ def mac_different_n(
             raise ValueError("n_series_list or n_bs must be given")
         else:
             if cutting == "constant_idx":
-                n_series_list = n / n_bs
+                n_series_list = n_total / n_bs
                 n_series_list = n_series_list[n_series_list >= 20]
+                n_bs = n_total / n_series_list
+
             else:
-                n_series_list = np.round(n / n_bs).astype(int)
+                n_series_list = np.round(n_total / n_bs).astype(int)
                 _, idx = np.unique(n_series_list, return_index=True)
                 n_series_list = n_series_list[idx]
                 n_series_list = n_series_list[n_series_list >= 20]
-                n_bs = n / n_series_list
+                n_bs = n_total / n_series_list
 
     acf_mean = np.zeros(len(n_series_list))
     acf_std = np.zeros(len(n_series_list))
@@ -65,22 +66,22 @@ def mac_different_n(
         x = np.arange(min(n_series_list), max(n_series_list) + 1, 0.1)
         mu, sigma = mu_sigma_mac(x, cutting)
         ax.plot(
-            n / x,
+            n_total / x,
             1.96 * sigma - 1 / x,
             color="grey",
             linestyle="--",
             alpha=0.5,
         )
         ax.plot(
-            n / x,
+            n_total / x,
             -1.96 * sigma - 1 / x,
             color="grey",
             linestyle="--",
             alpha=0.5,
         )
-        ax.plot(n / x, mu, color="grey", linestyle="-")
+        ax.plot(n_total / x, mu, color="grey", linestyle="-")
         ax.fill_between(
-            n / x,
+            n_total / x,
             1.96 * sigma - 1 / x,
             -1.96 * sigma - 1 / x,
             color="orange",
@@ -130,7 +131,7 @@ def pval_mac(
 ) -> np.ndarray:
     """estimate the p-value of the hyptothesis that the b-value is constant. A
     small p-value indicates that the mean autocorrelation is significantly
-    larger than expected by chance, therefore disvalidating the null-hyptothesis.
+    larger than expected by chance, therefore disvalidating the nullhyptothesis
 
     Args:
         mac:        mean autocorrelation
@@ -154,7 +155,7 @@ def zval_mac(
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     """estimate the z-value of the hyptothesis that the b-value is constant. A
     small p-value indicates that the mean autocorrelation is significantly
-    larger than expected by chance, therefore disvalidating the null-hyptothesis.
+    larger than expected by chance, therefore disvalidating the nullhyptothesis
 
     Args:
         mac:        mean autocorrelation
