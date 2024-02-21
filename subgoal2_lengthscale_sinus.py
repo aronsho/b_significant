@@ -19,7 +19,7 @@ t = time_module.time()
 # ---------------------------------------------- #
 # fixed parameters
 # ---------------------------------------------- #
-n = 50  # number of times the magnitudesa are simulated to get the statistics
+n = 10  # number of times the magnitudesa are simulated to get the statistics
 
 mc = 0
 delta_m = 0.1
