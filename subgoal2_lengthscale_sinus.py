@@ -39,7 +39,7 @@ n_bs = np.arange(20, 4000, 20)
 # varying parameters
 # ---------------------------------------------- #
 
-delta_bs = np.arange(0.02, 0.22, 0.02)
+delta_bs = np.arange(0.05, 0.25, 0.05)
 length_scales = np.arange(100, 2000, 150)
 
 all_permutations = [
