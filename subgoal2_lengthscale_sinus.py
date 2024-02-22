@@ -2,7 +2,7 @@
 
 import numpy as np
 import pandas as pd
-from functions.general_functions import simulate_randomfield, b_any_series
+from functions.general_functions import simulate_sinus, b_any_series
 from functions.eval_functions import mac_different_n
 from seismostats.analysis.estimate_beta import estimate_b_tinti
 import itertools as it
@@ -69,7 +69,7 @@ ig_here = []
 n_bs_all = []
 
 for ii in range(n):
-    mags, b_true = simulate_randomfield(
+    mags, b_true = simulate_sinus(
         n_total, cl_length_scales[cl_idx], b, cl_delta_bs[cl_idx], mc, delta_m
     )
 
@@ -158,7 +158,7 @@ df = pd.DataFrame(
 # -----------------------------------------------#
 
 save_str = (
-    "results/length_scale/" + str(cutting) + "/df" + str(cl_idx) + ".csv"
+    "results/length_scale/" + str(cutting) + "/df_sinus" + str(cl_idx) + ".csv"
 )
 df.to_csv(save_str, sep=",", index=False)
 

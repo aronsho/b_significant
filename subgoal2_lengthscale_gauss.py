@@ -19,7 +19,7 @@ t = time_module.time()
 # ---------------------------------------------- #
 # fixed parameters
 # ---------------------------------------------- #
-n = 50  # number of times the magnitudesa are simulated to get the statistics
+n = 10  # number of times the magnitudesa are simulated to get the statistics
 
 mc = 0
 delta_m = 0.1
@@ -158,7 +158,7 @@ df = pd.DataFrame(
 # -----------------------------------------------#
 
 save_str = (
-    "results/length_scale/" + str(cutting) + "/df" + str(cl_idx) + ".csv"
+    "results/length_scale/" + str(cutting) + "/df_gauss" + str(cl_idx) + ".csv"
 )
 df.to_csv(save_str, sep=",", index=False)
 
