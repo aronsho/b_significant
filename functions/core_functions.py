@@ -2,7 +2,6 @@
 import numpy as np
 import datetime as dt
 import random
-from scipy.stats import norm
 import warnings
 from seismostats.analysis.estimate_beta import (
     estimate_b_positive,

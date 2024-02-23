@@ -158,7 +158,11 @@ df = pd.DataFrame(
 # -----------------------------------------------#
 
 save_str = (
-    "results/length_scale/" + str(cutting) + "/df_rectangle" + str(cl_idx) + ".csv"
+    "results/length_scale/"
+    + str(cutting)
+    + "/df_rectangle"
+    + str(cl_idx)
+    + ".csv"
 )
 df.to_csv(save_str, sep=",", index=False)
 
