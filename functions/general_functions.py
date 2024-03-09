@@ -1,12 +1,14 @@
 # imports
 import numpy as np
 import rft1d
+import scipy
 
 from seismostats import simulate_magnitudes, bin_to_precision
 from seismostats.analysis.estimate_beta import (
     estimate_b_positive,
     estimate_b_tinti,
 )
+from seismostats.analysis.estimate_mc import empirical_cdf
 import datetime as dt
 import warnings
 
@@ -88,6 +90,194 @@ def transform_n(
     """
     x_transformed = b / (1 - np.sqrt(n1 / n2) * (1 - b / x))
     return x_transformed
+
+
+# ======== Untested and badly commented, revise!!! ========
+
+
+def inverse_norm(x: np.ndarray, b: float, n: int) -> np.ndarray:
+    """distribution function of the reciprocal gaussian distribution. This is
+    the distribution of 1/X where X is normally distributed. It is designed
+    specifically to be used as proxy of the distribution of b-value estiamtes.
+
+    Args:
+        x:      values for which the distribution function is calculated
+            (i.e. estimated b-value)
+        b:      true b-value
+        n:      number of events in the distribution
+
+    Returns:
+        dist:   probability density at x
+    """
+    dist = (
+        1
+        / b
+        / np.sqrt(2 * np.pi)
+        * np.sqrt(n)
+        * (b / x) ** 2
+        * np.exp(-n / 2 * (1 - b / x) ** 2)
+    )
+    return dist
+
+
+class inverse_norm_class(scipy.stats.rv_continuous):
+    """distribution function of the reciprocal normal distribution.This can be
+    used, for instance to
+    - compute the cdf
+    - generate random numbers that follow the reciprocal normal distribution
+
+    Args:
+        b:      true b-value
+        n_b:    number of events in the distribution
+    """
+
+    def __init__(self, b, n_b):
+        scipy.stats.rv_continuous.__init__(self, a=0.0)
+        self.b_val = b
+        self.n_b = n_b
+
+    def _pdf(self, x):
+        return inverse_norm(x, b=self.b_val, n=self.n_b)
+
+
+def cdf_inverse_norm(x: np.ndarray, b: float, n_b: int) -> np.ndarray:
+    """distribution function of the reciprocal gaussian distribution. This is
+    the distribution of 1/X where X is normally distributed. It is designed
+    specifically to be used as proxy of the distribution of b-value estiamtes.
+
+    Args:
+        x:      values for which the distribution function is calculated
+            (i.e. estimated b-value)
+        b:      true b-value
+        n:      number of events in the distribution
+
+    Returns:
+        y:   cdf at x
+    """
+
+    x = np.sort(x)
+    x = np.unique(x)
+    y = np.zeros(len(x))
+    inverse_normal_distribution = inverse_norm_class(b=b, n_b=n_b)
+    y = inverse_normal_distribution.cdf(x=x)
+
+    return x, y
+
+
+def ks_test_b_dist(
+    sample: np.ndarray,
+    mc: float,
+    delta_m: float,
+    n_b,
+    ks_ds: list[float] | None = None,
+    n: int = 10000,
+    b: float | None = None,
+) -> tuple[float, float, list[float]]:
+    """
+    Perform the Kolmogorov-Smirnov (KS) test for the b-value distribution
+
+    Args:
+        sample:     Magnitude sample
+        mc:         Completeness magnitude
+        delta_m:    Magnitude bin size
+        ks_ds:      List to store KS distances, by default None
+        n:          Number of number of times the KS distance is calculated for
+                estimating the p-value, by default 10000
+        beta :      Beta parameter for the Gutenberg-Richter distribution, by
+                    default None
+
+    Returns:
+        orig_ks_d:  original KS distance
+        p_val:      p-value
+        ks_ds:      list of KS distances
+    """
+
+    sample = sample[sample >= mc - delta_m / 2]
+
+    if len(sample) == 0:
+        print("no sample")
+        return 1, 0, []
+
+    if len(np.unique(sample)) == 1:
+        print("sample contains only one value")
+        return 1, 0, []
+
+    if b is None:
+        b = np.mean(sample) * (n - 1) / n  # taking account for the bias
+
+    if ks_ds is None:
+        ks_ds = []
+        n_sample = len(sample)
+
+        # We want to compare the ks distance with the distribution that would
+        # result from a perfekt GR law. We assume that binning does not have a
+        # large impact on the cdf, which is an ok approximation.The test will
+        # stil be valid even if the assumption is not correct, as this is true
+        # both for the empirical cdf and the synthetical created from which
+        # the p_val is retrieved.
+        simulated_b = b_synth(
+            n * n_sample, b, n_b, mc, delta_m, b_parameter="b_value"
+        )
+
+        for ii in range(n):
+            simulated = simulated_b[
+                n_sample * ii : n_sample * (ii + 1)  # noqa
+            ]
+            # here, we assume that binning does not have a large impact on the
+            # cdf, which is an ok approximation.
+            _, y_th = cdf_inverse_norm(simulated, b, n_b)
+            _, y_emp = empirical_cdf(simulated)
+
+            ks_d = np.max(np.abs(y_emp - y_th))
+            ks_ds.append(ks_d)
+
+    _, y_th = cdf_inverse_norm(sample, b, n_b)
+    _, y_emp = empirical_cdf(sample)
+
+    orig_ks_d = np.max(np.abs(y_emp - y_th))
+    p_val = sum(ks_ds >= orig_ks_d) / len(ks_ds)
+
+    return orig_ks_d, p_val, ks_ds
+
+
+def b_synth(
+    n: int,
+    b: float,
+    n_b: int,
+    mc: float = 0,
+    delta_m: float = 0.1,
+    b_parameter: str = "b_value",
+) -> float:
+    """create estaimted b-values from a given true b-value
+
+    Args:
+        n:              number of estimated beta / b-values to simulate
+        b:              true beta / b-value
+        n_b:            number of events per beta / b-value estimate
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+        b_parameter:    'b_value' or 'beta'
+
+    Returns:
+        b_synth:    synthetic beta / b-value
+    """
+
+    mags = simulated_magnitudes_binned(
+        n * n_b, b, mc, delta_m, b_parameter=b_parameter
+    )
+
+    b = np.zeros(n)
+    for ii in range(n):
+        b[ii] = estimate_b_tinti(
+            mags[ii * n_b : (ii + 1) * n_b],  # noqa
+            mc,
+            delta_m,
+            b_parameter=b_parameter,
+        )
+    return b
+
+
+# ==================================================
 
 
 def acf_lag_n(series: np.ndarray, lag: int = 1) -> float:
