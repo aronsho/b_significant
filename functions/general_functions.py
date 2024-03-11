@@ -92,9 +92,6 @@ def transform_n(
     return x_transformed
 
 
-# ======== Untested and badly commented, revise!!! ========
-
-
 def inverse_norm(x: np.ndarray, b: float, n: int) -> np.ndarray:
     """distribution function of the reciprocal gaussian distribution. This is
     the distribution of 1/X where X is normally distributed. It is designed
@@ -192,16 +189,6 @@ def ks_test_b_dist(
         ks_ds:      list of KS distances
     """
 
-    sample = sample[sample >= mc - delta_m / 2]
-
-    if len(sample) == 0:
-        print("no sample")
-        return 1, 0, []
-
-    if len(np.unique(sample)) == 1:
-        print("sample contains only one value")
-        return 1, 0, []
-
     if b is None:
         b = np.mean(sample) * (n - 1) / n  # taking account for the bias
 
@@ -275,9 +262,6 @@ def b_synth(
             b_parameter=b_parameter,
         )
     return b
-
-
-# ==================================================
 
 
 def acf_lag_n(series: np.ndarray, lag: int = 1) -> float:
