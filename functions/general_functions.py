@@ -2,6 +2,7 @@
 import numpy as np
 import rft1d
 import scipy
+from scipy.stats import norm
 
 from seismostats import simulate_magnitudes, bin_to_precision
 from seismostats.analysis.estimate_beta import (
@@ -623,3 +624,34 @@ def b_any_series(
         out = out + (b_std,)
 
     return out
+
+
+# ========== need to comment still ========
+
+
+def normalcdf_incompleteness(
+    mags: np.ndarray, mc: float, sigma: float
+) -> np.ndarray:
+    """Filtering function: normal cdf with a standard deviation of sigma. The
+    output can be interpreted as the probability to detect an earthquake. At
+    mc, the probability of detect an earthquake is per definition 50%.
+
+    Args:
+        mags:
+
+    """
+    p = np.array(len(mags))
+    x = (mags - mc) / sigma
+    p = norm.cdf(x)
+    return p
+
+
+def distort_completeness(
+    mags: np.ndarray, mc: float, sigma: float
+) -> np.ndarray:
+    p = normalcdf_incompleteness(mags, mc, sigma)
+    p_test = np.random.rand(len(p))
+    return mags[p > p_test]
+
+
+# ========== need to comment still ========
