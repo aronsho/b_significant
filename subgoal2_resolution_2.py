@@ -24,14 +24,14 @@ mc = 0
 delta_m = 0.1
 
 b = 1
-n_bs = 50
+n_bs = 200
 
 b_parameter = "b_value"
 
 cutting = "constant_idx"
 transform = False
 
-n_series = 100
+n_series = 50
 
 # ---------------------------------------------- #
 # varying parameters
