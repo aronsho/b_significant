@@ -334,6 +334,7 @@ def autocorrelation(
     cutting: str = "random_idx",
     order: None | np.ndarray = None,
     b_method="positive",
+    test: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """estimates the autocorrelation from subsampling the magnitudes into
     n_sample pieces, according to the method given in cutting. This process
@@ -382,6 +383,8 @@ def autocorrelation(
         # for constant window approach, the sindow has to be shifted exactly
         # the number of samples per estimate (minus one for no repititions)
         n = int(len(magnitudes) / n_sample) - 1
+        if test is True:
+            n = 1
     acfs = np.zeros(n)
     n_series_used = np.zeros(n)
     for ii in range(n):
