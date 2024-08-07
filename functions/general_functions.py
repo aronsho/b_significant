@@ -3,16 +3,20 @@ import numpy as np
 import rft1d
 import scipy
 from scipy.stats import norm
+import datetime as dt
 
-from seismostats import simulate_magnitudes, bin_to_precision
+from seismostats import (
+    simulate_magnitudes_binned,
+    bin_to_precision,
+    estimate_b,
+    estimate_a,
+)
 from seismostats.analysis.estimate_beta import (
     estimate_b_positive,
-    estimate_b_tinti,
+    estimate_b_more_positive,
 )
+from seismostats.analysis.estimate_a import estimate_a_positive
 from seismostats.analysis.estimate_mc import empirical_cdf
-import datetime as dt
-import warnings
-
 
 def update_welford(existing_aggregate: tuple, new_value: float) -> tuple:
     """Update Welford's algorithm for computing a running mean and standard
@@ -56,17 +60,8 @@ def finalize_welford(existing_aggregate: tuple) -> tuple[float, float]:
         variance:   variance of the series
     """
     (count, mean, M2) = existing_aggregate
-    if count < 2:
-        if count == 1:
-            # raise warinng
-            warnings.warn(
-                "only one value used, therefore variance is not defined"
-            )
-            return mean, np.nan
-        if count == 0:
-            # raise warinng
-            warnings.warn("no value used, therefore variance is not defined")
-            return np.nan, np.nan
+    if count == 1 or count == 0:
+        return mean, np.nan
     else:
         (mean, variance) = (
             mean,
@@ -162,6 +157,475 @@ def cdf_inverse_norm(x: np.ndarray, b: float, n_b: int) -> np.ndarray:
     return x, y
 
 
+def simulate_rectangular(
+    n_total: int,
+    n_deviation: int,
+    b: float,
+    delta_b: float,
+    mc: float,
+    delta_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes with a step of length N_deviation in the
+    b-value
+
+    Args:
+        n_total:        total number of magnitudes to simulate
+        n_deviation:    number of magnitudes with deviating b-value
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+    n_loop1 = int((n_total - n_deviation) / 2)
+
+    b_true = np.ones(n_total) * b
+    b_true[n_loop1: n_loop1 + n_deviation] = b + delta_b  # noqa
+
+    magnitudes = simulate_magnitudes_binned(n_total, b_true, mc, delta_m)
+    return magnitudes, b_true
+
+
+def simulate_step(
+    n_total: int,
+    b: float,
+    delta_b: float,
+    mc: float,
+    delta_m: float = 0.01,
+    idx_step: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes with a step at idx in the b-value
+
+    Args:
+        n_total:              total number of magnitudes to simulate
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+        idx_step:       index of the magnitude where the step occurs. if None,
+                    the step occurs at the middle of the sequence
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+
+    if idx_step is None:
+        idx_step = int(n_total / 2)
+
+    b_true = np.ones(n_total) * b
+    b_true[idx_step:] = b + delta_b
+
+    magnitudes = simulate_magnitudes_binned(n_total, b_true, mc, delta_m)
+    return magnitudes, b_true
+
+
+def simulate_sinus(
+    n_total: int,
+    n_wavelength: int,
+    b: float,
+    delta_b: float,
+    mc: float,
+    delta_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes with an underlying sinusoidal b-value
+    distribution
+
+    Args:
+        n_total:        total number of magnitudes to simulate
+        n_wavelength:   wavelength of the sinusoidal
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+    b_true = (
+        b
+        + np.sin(np.arange(n_total) / (n_wavelength - 1) * 2 * np.pi) * delta_b
+    )
+
+    magnitudes = simulate_magnitudes_binned(n_total, b_true, mc, delta_m)
+    return magnitudes, b_true
+
+
+def simulate_ramp(
+    n_total: int,
+    b: float,
+    delta_b: float,
+    mc: float,
+    delta_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes with an underlying b-value that rises
+    constantly
+
+    Args:
+        n_total:              total number of magnitudes to simulate
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+    b_true = b + np.arange(n_total) / n_total * delta_b
+
+    magnitudes = simulate_magnitudes_binned(n_total, b_true, mc, delta_m)
+    return magnitudes, b_true
+
+
+def simulate_randomfield(
+    n_total: int,
+    kernel_width: float,
+    b: float,
+    b_std: float,
+    mc: float,
+    delta_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Simulate binned magnitudes where the underlying b-values vary with time
+    as a random gaussian process
+
+    Args:
+        n_total:              total number of magnitudes to simulate
+        b:              b-value of the background
+        delta_b:        deviation of b-value
+        mc:             completeness magnitude
+        delta_m:        magnitude bin width
+        idx_step:       index of the magnitude where the step occurs. if None,
+                    the step occurs at the middle of the sequence
+
+    Returns:
+        magnitudes: array of magnitudes
+        b_true:     array of b-values from which each magnitude was simulated
+
+    """
+    magnitudes = np.zeros(n_total)
+    kernel_width
+    b_s = abs(b + rft1d.random.randn1d(1, n_total, kernel_width) * b_std)
+
+    for ii in range(n_total):
+        magnitudes[ii] = simulate_magnitudes_binned(
+            1, b_s[ii] * np.log(10), mc, delta_m,
+        ).item()
+    return bin_to_precision(magnitudes, delta_m), b_s
+
+
+def utsu_test(
+    b1: np.ndarray, b2: np.ndarray, n1: np.ndarray[int], n2: np.ndarray
+) -> np.ndarray:
+    """Given two b-value estimates from two magnitude samples, this functions
+    gives back the probability that the actual underlying b-values are not
+    different. All the input arrays have to have the same length.
+
+    Source: TODO Need to verify that this is used in Utsu 1992 !!!
+
+    Args:
+        b1:     b-value estimate of first sample
+        b2:     b-value estimate of seconds sample
+        N1:     number of magnitudes in first sample
+        N2:     number of magnitudes in second sample
+
+    Returns:
+        p:      Probability that the underlying b-value of the two samples is
+            identical
+    """
+    delta_AIC = (
+        -2 * (n1 + n2) * np.log(n1 + n2)
+        + 2 * n1 * np.log(n1 + n2 * b1 / b2)
+        + 2 * n2 * np.log(n2 + n1 * b2 / b1)
+        - 2
+    )
+    p = np.exp(-delta_AIC / 2 - 2)
+    return p
+
+
+def normalcdf_incompleteness(
+    mags: np.ndarray, mc: float, sigma: float
+) -> np.ndarray:
+    """Filtering function: normal cdf with a standard deviation of sigma. The
+    output can be interpreted as the probability to detect an earthquake. At
+    mc, the probability of detect an earthquake is per definition 50%.
+
+    Args:
+        mags:   array of magnitudes
+        mc:     completeness magnitude
+        sigma:  standard deviation of the normal cdf
+
+    Returns:
+        p:      array of probabilities to detect given earthquakes
+    """
+    p = np.array(len(mags))
+    x = (mags - mc) / sigma
+    p = norm.cdf(x)
+    return p
+
+
+def distort_completeness(
+    mags: np.ndarray, mc: float, sigma: float
+) -> np.ndarray:
+    """
+    Filter a given catalog of magnitudes with a given completeness magnitude
+    with a filtering function that is a normal cdf with a standard deviation
+    of sigma.
+
+    Args:
+        mags:   array of magnitudes
+        mc:     completeness magnitude
+        sigma:  standard deviation of the normal cdf
+
+    Returns:
+        mags:   array of magnitudes that passed the filtering function
+    """
+    p = normalcdf_incompleteness(mags, mc, sigma)
+    p_test = np.random.rand(len(p))
+    return mags[p > p_test]
+
+
+def b_samples(
+    tile_magnitudes: np.ndarray,
+    tile_times: np.ndarray[dt.datetime],
+    delta_m: float = 0.1,
+    mc: None | float = None,
+    dmc: None | float = None,
+    b_method: str = "positive",
+    return_std: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """ Estimate the b-values for a given partition of the data
+
+    Args:
+        magnitudes:     array of magnitudes
+        times:          array of times that correspond to magnitudes
+        n_sample:       number of subsamples to cut the data into
+        delta_m:        magnitude bin width
+        return_idx:     if True, return the indices of the subsamples
+        cutting:        method of cutting the data into subsamples. either
+                    'random_idx' or 'constant_idx' or 'random'
+        order:          array of values that can be used to sort the
+                    magnitudes, if left as None, it will be assumed that the
+                    desired order is in time.
+        offset:         offset where to start cutting the series (only for
+                    cutting = 'constant_idx')
+        nb_min:         minimum number of events in a subsample (only for the
+                    cutting method 'random_idx' relevant)
+
+    """
+    b_series = np.zeros(len(tile_magnitudes))
+    std_b = np.zeros(len(tile_magnitudes))
+    n_ms = np.zeros(len(tile_magnitudes))
+
+    for ii, mags_loop in enumerate(tile_magnitudes):
+        # sort the magnitudes of the subsets by time
+        times_loop = tile_times[ii]
+        idx_sorted = np.argsort(times_loop)
+        mags_loop = mags_loop[idx_sorted]
+        times_loop = times_loop[idx_sorted]
+
+        if len(mags_loop) > 2:
+            if b_method == "tinti":
+                b_series[ii],  std_b[ii], = estimate_b(
+                    mags_loop,
+                    mc,
+                    delta_m=delta_m,
+                    method=b_method,
+                    return_std=True,
+                )
+                n_ms[ii] = len(mags_loop)
+            elif b_method == "positive":
+                b_series[ii], std_b[ii], n_ms[ii] = estimate_b_positive(
+                    np.array(mags_loop),
+                    delta_m=delta_m,
+                    dmc=dmc,
+                    return_std=True,
+                    return_n=True)
+            elif b_method == "more_positive":
+                b_series[ii], std_b[ii],  n_ms[ii] = estimate_b_more_positive(
+                    np.array(mags_loop),
+                    delta_m=delta_m,
+                    dmc=dmc,
+                    return_std=True,
+                    return_n=True,)
+        else:
+            b_series[ii] = np.nan
+            std_b[ii] = np.nan
+
+    if return_std:
+        return b_series, std_b, n_ms.astype(int)
+    
+    return b_series, n_ms.astype(int)
+
+
+def a_samples(
+    tile_magnitudes: np.ndarray,
+    tile_times: np.ndarray[dt.datetime],
+    delta_m: float = 0.1,
+    mc: None | float = None,
+    volumes: None | np.ndarray = None,
+    a_method: str = "positive",
+) -> tuple[np.ndarray, np.ndarray]:
+    """ Estimate a-values for the given partition of the data
+
+    Args:
+        magnitudes:     array of magnitudes
+        times:          array of times that correspond to magnitudes
+        n_sample:       number of subsamples to cut the data into
+        delta_m:        magnitude bin width
+        return_idx:     if True, return the indices of the subsamples
+        cutting:        method of cutting the data into subsamples. either
+                    'random_idx' or 'constant_idx' or 'random'
+        order:          array of values that can be used to sort the
+                    magnitudes, if left as None, it will be assumed that the
+                    desired order is in time.
+        offset:         offset where to start cutting the series (only for
+                    cutting = 'constant_idx')
+        nb_min:         minimum number of events in a subsample (only for the
+                    cutting method 'random_idx' relevant)
+
+    """
+    a_series = np.zeros(len(tile_magnitudes))
+
+    for ii, mags_loop in enumerate(tile_magnitudes):
+        # sort the magnitudes of the subsets by time
+        times_loop = tile_times[ii]
+        idx_sorted = np.argsort(times_loop)
+        mags_loop = mags_loop[idx_sorted]
+        times_loop = times_loop[idx_sorted]
+
+        if len(mags_loop) > 10:
+            if a_method == "tinti":
+                a_series[ii] = estimate_a(
+                    mags_loop,
+                    mc=mc,
+                    delta_m=delta_m,
+                    scaling_factor=volumes[ii],
+                )
+            elif a_method == "positive":
+                idx_order = np.argsort(times_loop)
+                mags_loop = mags_loop[idx_order]
+                times_loop = times_loop[idx_order]
+                a_series[ii] = estimate_a_positive(
+                    mags_loop,
+                    times=times_loop,
+                    mc=mc,
+                    delta_m=delta_m,
+                    scaling_factor=volumes[ii],
+                )
+        else:
+            a_series[ii] = np.nan
+
+    return a_series
+
+
+def b_any_series(
+    magnitudes: np.ndarray,
+    times: np.ndarray[dt.datetime],
+    n_b: int,
+    delta_m: float = 0,
+    mc: float = None,
+    return_std: bool = False,
+    overlap: float = 0,
+    return_bar: bool = False,
+    method: str = "tinti",
+):
+    """estimates the b-value using a constant number of events (n_times).
+
+    Args:
+        magnitudes:         array of magnitudes. Magnitudes should be
+                            sorted in the way the series is wanted
+                            (time sorting is not assumed)
+        times:               array of dates
+        n_b:                number of events to use for the estimation
+        mc:                 completeness magnitude
+        delta_m:            magnitude bin width
+        return_std:         if True, return the standard deviation of the
+                        b-value
+        overlap:            fraction of overlap between the time windows
+        return_bar:     if True, return the time window lengths
+        method:             method to use for the b-value estimation.
+
+    Returns:
+        b_time:     array of b-values
+        time_max:   array of end times of the time windows
+        time_bar:   array of time window lengths
+    """
+    n_eval = len(magnitudes) - n_b
+    b_any = []
+    b_std = []
+    idx_max = []
+    idx_min = []
+
+    if method == "positive":
+        check_first = 0
+        check_last = 0
+
+        while check_last < len(magnitudes) - 1:
+            loop_mags = magnitudes[check_first:check_last + 1]
+            idx = np.argsort(times[check_first:check_last + 1])
+            loop_mags = loop_mags[idx]
+            diffs = np.diff(loop_mags)
+
+            if sum(diffs > 0) < n_b:
+                check_last += 1
+            elif sum(diffs > 0) > n_b:
+                check_first += 1
+            elif sum(diffs > 0) == n_b:
+                b_loop, std_loop = estimate_b_positive(
+                    loop_mags, delta_m=delta_m, return_std=True
+                )
+                b_any.append(b_loop)
+                b_std.append(std_loop)
+                idx_min.append(check_first)
+                idx_max.append(check_last)
+                check_first += 1
+
+    elif method == "tinti":
+        if mc is None:
+            mc = magnitudes.min()
+            print("no mc given, chose minimum magnitude of the sample")
+        for ii in np.arange(
+            0,
+            n_eval,
+            n_b - int(max(0, round(n_b * overlap - 1, 1))),
+        ):
+            loop_mags = magnitudes[ii: ii + n_b + 1]  # noqa
+            idx = np.argsort(times[ii: ii + n_b + 1])  # noqa
+            loop_mags = loop_mags[idx]
+
+            b_loop, std_loop = estimate_b(
+                loop_mags, mc=mc, delta_m=delta_m, return_std=True
+            )
+            b_any.append(b_loop)
+            b_std.append(std_loop)
+
+            idx_min.append(ii)
+            idx_max.append(ii + n_b)
+
+    b_any = np.array(b_any)
+    b_std = np.array(b_std)
+    idx_min = np.array(idx_min)
+    idx_max = np.array(idx_max)
+
+    if return_bar is True:
+        out = (b_any, [idx_min, idx_max])
+    else:
+        out = (b_any, idx_max)
+
+    if return_std is True:
+        out = out + (b_std,)
+
+    return out
+
 def ks_test_b_dist(
     sample: np.ndarray,
     mc: float,
@@ -209,7 +673,7 @@ def ks_test_b_dist(
 
         for ii in range(n):
             simulated = simulated_b[
-                n_sample * ii : n_sample * (ii + 1)  # noqa
+                n_sample * ii: n_sample * (ii + 1)  # noqa
             ]
             # here, we assume that binning does not have a large impact on the
             # cdf, which is an ok approximation.
@@ -226,7 +690,6 @@ def ks_test_b_dist(
     p_val = sum(ks_ds >= orig_ks_d) / len(ks_ds)
 
     return orig_ks_d, p_val, ks_ds
-
 
 def b_synth(
     n: int,
@@ -250,408 +713,16 @@ def b_synth(
         b_synth:    synthetic beta / b-value
     """
 
-    mags = simulated_magnitudes_binned(
+    mags = simulate_magnitudes_binned(
         n * n_b, b, mc, delta_m, b_parameter=b_parameter
     )
 
     b = np.zeros(n)
     for ii in range(n):
-        b[ii] = estimate_b_tinti(
-            mags[ii * n_b : (ii + 1) * n_b],  # noqa
+        b[ii] = estimate_b(
+            mags[ii * n_b: (ii + 1) * n_b],  # noqa
             mc,
             delta_m,
             b_parameter=b_parameter,
         )
     return b
-
-
-def acf_lag_n(series: np.ndarray, lag: int = 1) -> float:
-    """calculates the autocorrelation function of a series for a given lag
-    Args:
-        b_series (np.array): array of b-values
-        lag (int): lag for which the acf is calculated
-
-    Returns:
-        acf (float): autocorrelation value for the given lag
-    """
-    if lag == 0:
-        acf = 1
-    else:
-        acf = sum(
-            (series[lag:] - np.mean(series))
-            * (series[:-lag] - np.mean(series))
-        )
-        acf /= sum((series - np.mean(series)) ** 2)
-    return acf
-
-
-def simulated_magnitudes_binned(
-    n: int,
-    b: float | np.ndarray,
-    mc: float,
-    delta_m: float,
-    mag_max: float = None,
-    b_parameter: str = "b_value",
-) -> np.ndarray:
-    """simulate magnitudes and bin them to a given precision. input 'b' can be
-    specified to be beta or the b-value, depending on the 'b_parameter' input
-
-    Args:
-        n:              number of magnitudes to simulate
-        b:              b-value or beta of the distribution from which
-                magnitudes are simulated. If b is np.ndarray, it must have the
-                length n. Then each magnitude is simulated from the
-                corresponding b-value
-        mc:             completeness magnitude
-        delta_m:        magnitude bin width
-        mag_max:        maximum magnitude
-        b_parameter:    'b_value' or 'beta'
-
-    Returns:
-        mags:   array of magnitudes
-    """
-    if b_parameter == "b_value":
-        beta = b * np.log(10)
-    elif b_parameter == "beta":
-        beta = b
-    else:
-        raise ValueError("b_parameter must be 'b_value' or 'beta'")
-
-    mags = simulate_magnitudes(n, beta, mc - delta_m / 2, mag_max)
-    if delta_m > 0:
-        mags = bin_to_precision(mags, delta_m)
-    return mags
-
-
-def simulate_rectangular(
-    n_total: int,
-    n_deviation: int,
-    b: float,
-    delta_b: float,
-    mc: float,
-    delta_m: float = 0.01,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Simulate binned magnitudes with a step of length N_deviation in the
-    b-value
-
-    Args:
-        n_total:        total number of magnitudes to simulate
-        n_deviation:    number of magnitudes with deviating b-value
-        b:              b-value of the background
-        delta_b:        deviation of b-value
-        mc:             completeness magnitude
-        delta_m:        magnitude bin width
-
-    Returns:
-        magnitudes: array of magnitudes
-        b_true:     array of b-values from which each magnitude was simulated
-
-    """
-    n_loop1 = int((n_total - n_deviation) / 2)
-
-    b_true = np.ones(n_total) * b
-    b_true[n_loop1 : n_loop1 + n_deviation] = b + delta_b  # noqa
-
-    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
-    return magnitudes, b_true
-
-
-def simulate_step(
-    n_total: int,
-    b: float,
-    delta_b: float,
-    mc: float,
-    delta_m: float = 0.01,
-    idx_step: int | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Simulate binned magnitudes with a step at idx in the b-value
-
-    Args:
-        n_total:              total number of magnitudes to simulate
-        b:              b-value of the background
-        delta_b:        deviation of b-value
-        mc:             completeness magnitude
-        delta_m:        magnitude bin width
-        idx_step:       index of the magnitude where the step occurs. if None,
-                    the step occurs at the middle of the sequence
-
-    Returns:
-        magnitudes: array of magnitudes
-        b_true:     array of b-values from which each magnitude was simulated
-
-    """
-
-    if idx_step is None:
-        idx_step = int(n_total / 2)
-
-    b_true = np.ones(n_total) * b
-    b_true[idx_step:] = b + delta_b
-
-    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
-    return magnitudes, b_true
-
-
-def simulate_sinus(
-    n_total: int,
-    n_wavelength: int,
-    b: float,
-    delta_b: float,
-    mc: float,
-    delta_m: float = 0.01,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Simulate binned magnitudes with an underlying sinusoidal b-value
-    distribution
-
-    Args:
-        n_total:        total number of magnitudes to simulate
-        n_wavelength:   wavelength of the sinusoidal
-        b:              b-value of the background
-        delta_b:        deviation of b-value
-        mc:             completeness magnitude
-        delta_m:        magnitude bin width
-
-    Returns:
-        magnitudes: array of magnitudes
-        b_true:     array of b-values from which each magnitude was simulated
-
-    """
-    b_true = (
-        b
-        + np.sin(np.arange(n_total) / (n_wavelength - 1) * 2 * np.pi) * delta_b
-    )
-
-    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
-    return magnitudes, b_true
-
-
-def simulate_ramp(
-    n_total: int,
-    b: float,
-    delta_b: float,
-    mc: float,
-    delta_m: float = 0.01,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Simulate binned magnitudes with an underlying b-value that rises
-    constantly
-
-    Args:
-        n_total:              total number of magnitudes to simulate
-        b:              b-value of the background
-        delta_b:        deviation of b-value
-        mc:             completeness magnitude
-        delta_m:        magnitude bin width
-
-    Returns:
-        magnitudes: array of magnitudes
-        b_true:     array of b-values from which each magnitude was simulated
-
-    """
-    b_true = b + np.arange(n_total) / n_total * delta_b
-
-    magnitudes = simulated_magnitudes_binned(n_total, b_true, mc, delta_m)
-    return magnitudes, b_true
-
-
-def simulate_randomfield(
-    n_total: int,
-    kernel_width: float,
-    b: float,
-    b_std: float,
-    mc: float,
-    delta_m: float = 0.01,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Simulate binned magnitudes where the underlying b-values vary with time
-    as a random gaussian process
-
-    Args:
-        n_total:              total number of magnitudes to simulate
-        b:              b-value of the background
-        delta_b:        deviation of b-value
-        mc:             completeness magnitude
-        delta_m:        magnitude bin width
-        idx_step:       index of the magnitude where the step occurs. if None,
-                    the step occurs at the middle of the sequence
-
-    Returns:
-        magnitudes: array of magnitudes
-        b_true:     array of b-values from which each magnitude was simulated
-
-    """
-    magnitudes = np.zeros(n_total)
-    kernel_width
-    b_s = abs(b + rft1d.random.randn1d(1, n_total, kernel_width) * b_std)
-
-    for ii in range(n_total):
-        magnitudes[ii] = simulate_magnitudes(
-            1, b_s[ii] * np.log(10), mc=mc - delta_m / 2
-        ).item()
-    return bin_to_precision(magnitudes, delta_m), b_s
-
-
-def utsu_test(
-    b1: np.ndarray, b2: np.ndarray, n1: np.ndarray[int], n2: np.ndarray
-) -> np.ndarray:
-    """Given two b-value estimates from two magnitude samples, this functions
-    gives back the probability that the actual underlying b-values are not
-    different. All the input arrays have to have the same length.
-
-    Source: TODO Need to verify that this is used in Utsu 1992 !!!
-
-    Args:
-        b1:     b-value estimate of first sample
-        b2:     b-value estimate of seconds sample
-        N1:     number of magnitudes in first sample
-        N2:     number of magnitudes in second sample
-
-    Returns:
-        p:      Probability that the underlying b-value of the two samples is
-            identical
-    """
-    delta_AIC = (
-        -2 * (n1 + n2) * np.log(n1 + n2)
-        + 2 * n1 * np.log(n1 + n2 * b1 / b2)
-        + 2 * n2 * np.log(n2 + n1 * b2 / b1)
-        - 2
-    )
-    p = np.exp(-delta_AIC / 2 - 2)
-    return p
-
-
-def b_any_series(
-    magnitudes: np.ndarray,
-    times: np.ndarray[dt.datetime],
-    n_b: int,
-    delta_m: float = 0,
-    mc: float = None,
-    return_std: bool = False,
-    overlap: float = 0,
-    return_bar: bool = False,
-    method: str = "tinti",
-):
-    """estimates the b-value using a constant number of events (n_times).
-
-    Args:
-        magnitudes:         array of magnitudes. Magnitudes should be
-                            sorted in the way the series is wanted
-                            (time sorting is not assumed)
-        times:               array of dates
-        n_b:                number of events to use for the estimation
-        mc:                 completeness magnitude
-        delta_m:            magnitude bin width
-        return_std:         if True, return the standard deviation of the
-                        b-value
-        overlap:            fraction of overlap between the time windows
-        return_bar:     if True, return the time window lengths
-        method:             method to use for the b-value estimation.
-
-    Returns:
-        b_time:     array of b-values
-        time_max:   array of end times of the time windows
-        time_bar:   array of time window lengths
-    """
-    n_eval = len(magnitudes) - n_b
-    b_any = []
-    b_std = []
-    idx_max = []
-    idx_min = []
-
-    if method == "positive":
-        check_first = 0
-        check_last = 0
-
-        while check_last < len(magnitudes) - 1:
-            if check_last < check_first + n_b:
-                check_last = check_first + n_b
-
-            check_last += 1
-
-            loop_mags = magnitudes[check_first : check_last + 1]  # noqa
-            idx = np.argsort(times[check_first : check_last + 1])  # noqa
-            loop_mags = loop_mags[idx]
-            diffs = np.diff(loop_mags)
-
-            while sum(diffs > 0) > n_b:
-                loop_mags = magnitudes[check_first:check_last]
-                idx = np.argsort(times[check_first : check_last + 1])  # noqa
-                diffs = np.diff(loop_mags)
-                check_first += 1
-
-            if sum(diffs > 0) == n_b:
-                b_loop, std_loop = estimate_b_positive(
-                    loop_mags, delta_m=delta_m, return_std=True
-                )
-                b_any.append(b_loop)
-                b_std.append(std_loop)
-                idx_min.append(check_first)
-                idx_max.append(check_last)
-                check_first = int(
-                    np.round(overlap * (check_first - check_last) + check_last)
-                )
-
-    elif method == "tinti":
-        if mc is None:
-            mc = magnitudes.min()
-            print("no mc given, chose minimum magnitude of the sample")
-        for ii in np.arange(
-            0,
-            n_eval,
-            n_b - int(max(0, round(n_b * overlap - 1, 1))),
-        ):
-            loop_mags = magnitudes[ii : ii + n_b + 1]  # noqa
-            idx = np.argsort(times[ii : ii + n_b + 1])  # noqa
-            loop_mags = loop_mags[idx]
-
-            b_loop, std_loop = estimate_b_tinti(
-                loop_mags, mc=mc, delta_m=delta_m, return_std=True
-            )
-            b_any.append(b_loop)
-            b_std.append(std_loop)
-
-            idx_min.append(ii)
-            idx_max.append(ii + n_b)
-
-    b_any = np.array(b_any)
-    b_std = np.array(b_std)
-    idx_min = np.array(idx_min)
-    idx_max = np.array(idx_max)
-
-    if return_bar is True:
-        out = (b_any, [idx_min, idx_max])
-    else:
-        out = (b_any, idx_max)
-
-    if return_std is True:
-        out = out + (b_std,)
-
-    return out
-
-
-# ========== need to comment still ========
-
-
-def normalcdf_incompleteness(
-    mags: np.ndarray, mc: float, sigma: float
-) -> np.ndarray:
-    """Filtering function: normal cdf with a standard deviation of sigma. The
-    output can be interpreted as the probability to detect an earthquake. At
-    mc, the probability of detect an earthquake is per definition 50%.
-
-    Args:
-        mags:
-
-    """
-    p = np.array(len(mags))
-    x = (mags - mc) / sigma
-    p = norm.cdf(x)
-    return p
-
-
-def distort_completeness(
-    mags: np.ndarray, mc: float, sigma: float
-) -> np.ndarray:
-    p = normalcdf_incompleteness(mags, mc, sigma)
-    p_test = np.random.rand(len(p))
-    return mags[p > p_test]
-
-
-# ========== need to comment still ========

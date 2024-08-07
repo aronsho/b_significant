@@ -1,8 +1,6 @@
 import numpy as np
 
 
-# ======= attention: not well tested yet ===============================
-# =========and partly not working for general cases!=====================
 def spherical_to_cart(lats, lons, depths):
     """transform spherical coordinates in cartesian ones
 
@@ -140,15 +138,12 @@ def cut_section(cart_coords, length, width, depth):
     idx_x1 = x <= length
     idx_x2 = x >= 0
     idxy = abs(y) <= width / 2
-    idx_z = z <= depth
+    idx_z = z >= -depth
     idx = idx_x1 & idx_x2 & idxy & idx_z
     # cut out data
     x = x[idx]
     y = y[idx]
     z = z[idx]
     cut_coords = np.array([x, y, z])
+    print("depth", depth, min(z))
     return cut_coords, idx
-
-
-# ======= attention: not well tested yet ===============================
-# =========and partly not working for general cases!=====================
