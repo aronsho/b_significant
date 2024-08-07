@@ -16,7 +16,7 @@ from seismostats.analysis.estimate_beta import (
     estimate_b_more_positive,
 )
 from seismostats.analysis.estimate_a import estimate_a_positive
-from seismostats.analysis.estimate_mc import empirical_cdf
+
 
 def update_welford(existing_aggregate: tuple, new_value: float) -> tuple:
     """Update Welford's algorithm for computing a running mean and standard
@@ -317,7 +317,7 @@ def simulate_randomfield(
 
     for ii in range(n_total):
         magnitudes[ii] = simulate_magnitudes_binned(
-            1, b_s[ii] * np.log(10), mc, delta_m,
+            1, b_s[ii], mc, delta_m,
         ).item()
     return bin_to_precision(magnitudes, delta_m), b_s
 
@@ -462,7 +462,7 @@ def b_samples(
 
     if return_std:
         return b_series, std_b, n_ms.astype(int)
-    
+
     return b_series, n_ms.astype(int)
 
 
@@ -530,7 +530,7 @@ def a_samples(
 def b_any_series(
     magnitudes: np.ndarray,
     times: np.ndarray[dt.datetime],
-    n_b: int,
+    n_m: int,
     delta_m: float = 0,
     mc: float = None,
     return_std: bool = False,
@@ -559,7 +559,7 @@ def b_any_series(
         time_max:   array of end times of the time windows
         time_bar:   array of time window lengths
     """
-    n_eval = len(magnitudes) - n_b
+    n_eval = len(magnitudes) - n_m
     b_any = []
     b_std = []
     idx_max = []
@@ -575,11 +575,11 @@ def b_any_series(
             loop_mags = loop_mags[idx]
             diffs = np.diff(loop_mags)
 
-            if sum(diffs > 0) < n_b:
+            if sum(diffs > 0) < n_m:
                 check_last += 1
-            elif sum(diffs > 0) > n_b:
+            elif sum(diffs > 0) > n_m:
                 check_first += 1
-            elif sum(diffs > 0) == n_b:
+            elif sum(diffs > 0) == n_m:
                 b_loop, std_loop = estimate_b_positive(
                     loop_mags, delta_m=delta_m, return_std=True
                 )
@@ -596,10 +596,10 @@ def b_any_series(
         for ii in np.arange(
             0,
             n_eval,
-            n_b - int(max(0, round(n_b * overlap - 1, 1))),
+            n_m - int(max(0, round(n_m * overlap - 1, 1))),
         ):
-            loop_mags = magnitudes[ii: ii + n_b + 1]  # noqa
-            idx = np.argsort(times[ii: ii + n_b + 1])  # noqa
+            loop_mags = magnitudes[ii: ii + n_m + 1]  # noqa
+            idx = np.argsort(times[ii: ii + n_m + 1])  # noqa
             loop_mags = loop_mags[idx]
 
             b_loop, std_loop = estimate_b(
@@ -609,7 +609,7 @@ def b_any_series(
             b_std.append(std_loop)
 
             idx_min.append(ii)
-            idx_max.append(ii + n_b)
+            idx_max.append(ii + n_m)
 
     b_any = np.array(b_any)
     b_std = np.array(b_std)
@@ -626,11 +626,12 @@ def b_any_series(
 
     return out
 
+
 def ks_test_b_dist(
     sample: np.ndarray,
     mc: float,
     delta_m: float,
-    n_b,
+    n_m: int,
     ks_ds: list[float] | None = None,
     n: int = 10000,
     b: float | None = None,
@@ -668,7 +669,7 @@ def ks_test_b_dist(
         # both for the empirical cdf and the synthetical created from which
         # the p_val is retrieved.
         simulated_b = b_synth(
-            n * n_sample, b, n_b, mc, delta_m, b_parameter="b_value"
+            n * n_sample, b, n_m, mc, delta_m, b_parameter="b_value"
         )
 
         for ii in range(n):
@@ -677,19 +678,20 @@ def ks_test_b_dist(
             ]
             # here, we assume that binning does not have a large impact on the
             # cdf, which is an ok approximation.
-            _, y_th = cdf_inverse_norm(simulated, b, n_b)
-            _, y_emp = empirical_cdf(simulated)
+            x, y_emp = empirical_cdf(simulated)
+            _, y_th = cdf_inverse_norm(x, b, n_m)
 
             ks_d = np.max(np.abs(y_emp - y_th))
             ks_ds.append(ks_d)
 
-    _, y_th = cdf_inverse_norm(sample, b, n_b)
-    _, y_emp = empirical_cdf(sample)
+    x, y_emp = empirical_cdf(sample)
+    _, y_th = cdf_inverse_norm(x, b, n_m)
 
     orig_ks_d = np.max(np.abs(y_emp - y_th))
     p_val = sum(ks_ds >= orig_ks_d) / len(ks_ds)
 
     return orig_ks_d, p_val, ks_ds
+
 
 def b_synth(
     n: int,
@@ -726,3 +728,34 @@ def b_synth(
             b_parameter=b_parameter,
         )
     return b
+
+
+def empirical_cdf(
+    sample: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Calculate the empirical cumulative distribution function (CDF)
+    from a sample.
+
+    Parameters:
+        sample:     Magnitude sample
+        mc:         Completeness magnitude, if None, the minimum of the sample
+                is used
+        delta_m:    Magnitude bin size, by default 1e-16. Its recommended to
+                use the value that the samples are rounded to.
+        weights:    Sample weights, by default None
+
+    Returns:
+        x:          x-values of the empirical CDF (i.e. the unique vector of
+                magnitudes from mc to the maximum magnitude in the sample,
+                binned by delta_m)
+        y:          y-values of the empirical CDF (i.e., the empirical
+                frequency observed in the sample corresponding to the x-values)
+    """
+
+    idx1 = np.argsort(sample)
+    x = sample[idx1]
+    x, y_count = np.unique(x, return_counts=True)
+    y = np.cumsum(y_count) / len(sample)
+
+    return x, y

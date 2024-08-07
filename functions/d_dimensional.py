@@ -8,8 +8,6 @@ import numpy as np
 from scipy.spatial import Voronoi
 from seismostats.analysis.estimate_beta import estimate_b
 from scipy.spatial import ConvexHull, distance_matrix
-import geopandas as gpd
-import shapely
 from functions.general_functions import transform_n, a_samples, b_samples
 
 
@@ -162,7 +160,7 @@ def mac_d_dimensions(
         # 2.4 estimate a- and b-values
         b_vec,  n_m = b_samples(
             tile_magnitudes, tile_times, delta_m, mc, b_method=b_method)
-        
+
         b_vec[n_m < min_num] = np.nan
 
         if include_a is True:

@@ -393,4 +393,3 @@ def cut_random(
 
     subsamples = np.array_split(series, idx)
     return idx, subsamples
-
