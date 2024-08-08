@@ -238,7 +238,11 @@ def mac_one_dimension(
         std_b_average = std_b_average / average_cnt_b
     mac = np.mean(ac_1D)
     mean_n = np.mean(n)
-    mu_mac, std_mac = mu_sigma_mac(mean_n, partitioning)
+    if n_realizations > 1:
+        gamma = None
+    else:
+        gamma = 1
+    mu_mac, std_mac = mu_sigma_mac(mean_n, partitioning, gamma)
 
     mean_nm = np.mean(n_ms)
 
@@ -247,7 +251,7 @@ def mac_one_dimension(
             a_average = a_average / average_cnt_a
         mac_a = np.mean(ac_1D_a)
         mean_n_a = np.mean(n_a)
-        mu_mac_a, std_mac_a = mu_sigma_mac(mean_n_a, partitioning)
+        mu_mac_a, std_mac_a = mu_sigma_mac(mean_n_a, partitioning, gamma)
 
         if return_nm is True:
             return (mac, mu_mac, std_mac, b_average, std_b_average,

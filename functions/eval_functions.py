@@ -4,9 +4,11 @@ from scipy.stats import norm
 
 def mu_sigma_mac(
     n_series: np.ndarray,
-    cutting="constant_idx",
+    cutting: str = "constant_idx",
+    gamma: float | None = None
 ) -> np.ndarray:
-    gamma = gamma_factor(cutting)
+    if gamma is None:
+        gamma = gamma_factor(cutting)
     mu = -1 / n_series
     sigma = gamma * (n_series - 2) / (n_series * np.sqrt(n_series - 1))
     return mu, sigma
