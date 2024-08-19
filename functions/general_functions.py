@@ -627,6 +627,28 @@ def b_any_series(
     return out
 
 
+def probability_m(
+        a_value: float | np.ndarray,
+        b_value: float | np.ndarray,
+        m: float,
+        m_ref: float = 0) -> float:
+    """estimate the probability of an event larger than m
+
+    Args:
+        a_value:    a-value, scaled to the time of interest
+        b_value:    b-value
+        m:          magnitude at which the probability is estimated
+        m_ref:      reference magnitude (at which the a-value is given), by
+                default 0
+
+    Returns:
+        p:          probability of an event larger than m
+    """
+    n = 10 ** (a_value - b_value * (m - m_ref))
+    p = 1 - np.exp(-n)
+    return p
+
+
 def ks_test_b_dist(
     sample: np.ndarray,
     mc: float,

@@ -266,7 +266,8 @@ def mac_one_dimension(
 
 def cut_constant_idx(
     series: np.ndarray,
-    n_sample: np.ndarray,
+    n_sample: np.ndarray | None = None,
+    n_m: np.ndarray | None = None,
     offset: int = 0,
 ) -> tuple[list[int], list[np.ndarray]]:
     """cut a series such that the subsamples have a constant number of events.
@@ -276,13 +277,16 @@ def cut_constant_idx(
     Args:
         series:     array of values
         n_sample:   number of subsamples to cut the series into
+        n_m:        length of each sample (if not given, it'll be estimated
+                from n_sample)
         offset:     offset where to start cutting the series
 
     Returns:
         idx:            indices of the subsamples
         subsamples:     list of subsamples
     """
-    n_m = np.round(len(series) / n_sample).astype(int)
+    if n_m is None:
+        n_m = np.round(len(series) / n_sample).astype(int)
     idx = np.arange(offset, len(series), n_m)
 
     if offset == 0:
